@@ -10,21 +10,20 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const data = WaterSchema.parse(body);
 
-    // Find or create daily log
-    const [existing] = await pool.execute<RowDataPacket[]>(
+    // Concurrency-safe find-or-create daily log
+    const tempLogId = crypto.randomUUID();
+    await pool.execute(
+      `INSERT INTO daily_nutrition_logs (log_id, user_id, log_date)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE log_id = log_id`,
+      [tempLogId, auth.userId, data.date]
+    );
+
+    const [rows] = await pool.execute<RowDataPacket[]>(
       'SELECT log_id FROM daily_nutrition_logs WHERE user_id = ? AND log_date = ?',
       [auth.userId, data.date]
     );
-    let log_id: string;
-    if (existing.length > 0) {
-      log_id = (existing[0] as { log_id: string }).log_id;
-    } else {
-      log_id = crypto.randomUUID();
-      await pool.execute(
-        'INSERT INTO daily_nutrition_logs (log_id, user_id, log_date) VALUES (?, ?, ?)',
-        [log_id, auth.userId, data.date]
-      );
-    }
+    const log_id = (rows[0] as { log_id: string }).log_id;
 
     await pool.execute(
       'UPDATE daily_nutrition_logs SET water_ml = GREATEST(0, water_ml + ?) WHERE log_id = ?',
