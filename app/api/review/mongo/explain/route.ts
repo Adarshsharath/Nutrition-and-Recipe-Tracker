@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongo';
+import { requireReviewAccess, sanitizeError } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
+  const authCheck = await requireReviewAccess(req);
+  if (!authCheck.authorized) {
+    return authCheck.response;
+  }
+
   try {
     const db = await getDb();
     const sp = req.nextUrl.searchParams;
@@ -17,6 +23,9 @@ export async function GET(req: NextRequest) {
       .explain('executionStats');
     return NextResponse.json(explained);
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json(
+      { error: sanitizeError(err, 'Failed to generate MongoDB execution plan') },
+      { status: 500 }
+    );
   }
 }

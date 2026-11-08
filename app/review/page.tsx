@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import SqlResultTable from '@/components/SqlResultTable';
 import JsonViewer from '@/components/JsonViewer';
 
@@ -41,23 +41,52 @@ export default function ReviewPage() {
   const [syncCheckResult, setSyncCheckResult] = useState<Record<string, unknown> | null>(null);
   const [queryResults, setQueryResults] = useState<Record<string, { label: string; sql: string; rows: unknown[] }>>({});
   const [loading, setLoading] = useState(false);
+  const [statusInfo, setStatusInfo] = useState<{
+    nodeEnv?: string;
+    evaluationModeEnv?: boolean;
+    evaluationModeActive?: boolean;
+    authenticated?: boolean;
+    user?: { email: string } | null;
+  } | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const TABLE_NAMES = ['users', 'dietary_profiles', 'nutrition_goals', 'recipe_catalog', 'daily_nutrition_logs', 'meal_logs'];
+
+  useEffect(() => {
+    fetch('/api/review/status')
+      .then((r) => r.json())
+      .then((data) => setStatusInfo(data))
+      .catch(() => {});
+  }, []);
+
+  async function handleResponse<T>(res: Response): Promise<T | null> {
+    if (res.status === 401) {
+      const data = await res.json().catch(() => ({}));
+      setAuthError(data.message || 'Access denied: Authentication required for Review Console APIs.');
+      return null;
+    }
+    setAuthError(null);
+    return (await res.json()) as T;
+  }
 
   async function loadTables() {
     setLoading(true);
     try {
       const res = await fetch('/api/review/mysql/tables');
-      setTables(await res.json());
+      const tableList = await handleResponse<Array<Record<string, unknown>>>(res);
+      if (!tableList) return;
+      setTables(tableList);
       for (const t of TABLE_NAMES) {
         const r = await fetch(`/api/review/mysql/describe?table=${t}`);
-        const data = await r.json();
-        setTableDetail((prev) => ({ ...prev, [t]: data }));
+        const data = await handleResponse<{ desc: unknown[]; count: number; rows: unknown[] }>(r);
+        if (data) setTableDetail((prev) => ({ ...prev, [t]: data }));
       }
       const fkRes = await fetch('/api/review/mysql/foreign-keys');
-      setFks(await fkRes.json());
+      const fkData = await handleResponse<unknown[]>(fkRes);
+      if (fkData) setFks(fkData);
       const idxRes = await fetch('/api/review/mysql/indexes');
-      setIndexes(await idxRes.json());
+      const idxData = await handleResponse<Record<string, unknown[]>>(idxRes);
+      if (idxData) setIndexes(idxData);
     } finally {
       setLoading(false);
     }
@@ -67,7 +96,8 @@ export default function ReviewPage() {
     setLoading(true);
     try {
       const res = await fetch('/api/review/mysql/triggers');
-      setTriggerDetails(await res.json());
+      const data = await handleResponse<unknown[]>(res);
+      if (data) setTriggerDetails(data);
     } finally {
       setLoading(false);
     }
@@ -77,8 +107,8 @@ export default function ReviewPage() {
     setLoading(true);
     try {
       const res = await fetch(`/api/review/triggers/${name}/demo`, { method: 'POST' });
-      const data = await res.json();
-      setTriggerResults((prev) => ({ ...prev, [name]: data }));
+      const data = await handleResponse<unknown>(res);
+      if (data) setTriggerResults((prev) => ({ ...prev, [name]: data }));
     } finally {
       setLoading(false);
     }
@@ -88,7 +118,8 @@ export default function ReviewPage() {
     setLoading(true);
     try {
       const res = await fetch('/api/review/mysql/view');
-      setViewRows(await res.json());
+      const data = await handleResponse<unknown[]>(res);
+      if (data) setViewRows(data);
     } finally {
       setLoading(false);
     }
@@ -101,9 +132,12 @@ export default function ReviewPage() {
         fetch('/api/review/mongo/recipes?limit=15'),
         fetch('/api/review/mongo/indexes'),
       ]);
-      const recData = await recRes.json();
-      setMongoRecipes(recData.docs ?? recData);
-      setMongoIndexes(await idxRes.json());
+      const recData = await handleResponse<{ docs?: unknown[] } | unknown[]>(recRes);
+      if (recData) {
+        setMongoRecipes(Array.isArray(recData) ? recData : recData.docs ?? []);
+      }
+      const idxData = await handleResponse<unknown[]>(idxRes);
+      if (idxData) setMongoIndexes(idxData);
     } finally {
       setLoading(false);
     }
@@ -117,7 +151,8 @@ export default function ReviewPage() {
       if (explainFilter.meal_type) params.set('meal_type', explainFilter.meal_type);
       if (explainFilter.tag) params.set('tag', explainFilter.tag);
       const res = await fetch(`/api/review/mongo/explain?${params}`);
-      setMongoExplain(await res.json());
+      const data = await handleResponse<unknown>(res);
+      if (data) setMongoExplain(data);
     } finally {
       setLoading(false);
     }
@@ -127,7 +162,8 @@ export default function ReviewPage() {
     setLoading(true);
     try {
       const res = await fetch('/api/review/dataflow/demo', { method: 'POST' });
-      setDataflowResult(await res.json());
+      const data = await handleResponse<unknown>(res);
+      if (data) setDataflowResult(data);
     } finally {
       setLoading(false);
     }
@@ -137,7 +173,8 @@ export default function ReviewPage() {
     setLoading(true);
     try {
       const res = await fetch('/api/admin/sync-check');
-      setSyncCheckResult(await res.json());
+      const data = await handleResponse<Record<string, unknown>>(res);
+      if (data) setSyncCheckResult(data);
     } finally {
       setLoading(false);
     }
@@ -147,8 +184,8 @@ export default function ReviewPage() {
     setLoading(true);
     try {
       const res = await fetch(`/api/review/queries?q=${key}`);
-      const data = await res.json();
-      setQueryResults((prev) => ({ ...prev, [key]: data }));
+      const data = await handleResponse<{ label: string; sql: string; rows: unknown[] }>(res);
+      if (data) setQueryResults((prev) => ({ ...prev, [key]: data }));
     } finally {
       setLoading(false);
     }
@@ -172,10 +209,47 @@ export default function ReviewPage() {
             Interactive verification console for DBMS Review 1 · Live queries, trigger executions, and cross-database validation
           </p>
         </div>
-        <span className="text-xs bg-amber-100 text-amber-800 border border-amber-300 font-semibold px-3 py-1.5 rounded-full">
-          Demo Environment · Safe Transactions
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {statusInfo?.evaluationModeActive ? (
+            <span className="text-xs bg-emerald-100 text-emerald-800 border border-emerald-300 font-semibold px-3 py-1.5 rounded-full flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              Evaluation Mode Active (Viva Demonstration)
+            </span>
+          ) : statusInfo?.authenticated ? (
+            <span className="text-xs bg-blue-100 text-blue-800 border border-blue-300 font-semibold px-3 py-1.5 rounded-full flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+              Protected Console · Authenticated ({statusInfo.user?.email})
+            </span>
+          ) : (
+            <span className="text-xs bg-rose-100 text-rose-800 border border-rose-300 font-semibold px-3 py-1.5 rounded-full flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+              Protected Console · Login Required
+            </span>
+          )}
+          <span className="text-xs bg-amber-100 text-amber-800 border border-amber-300 font-semibold px-3 py-1.5 rounded-full">
+            Safe Transactions · Auto-Rollback
+          </span>
+        </div>
       </div>
+
+      {/* Auth Error Banner */}
+      {authError && (
+        <div className="mb-6 p-4 rounded-2xl bg-rose-50/90 border border-rose-200 text-rose-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🔒</span>
+            <div>
+              <p className="font-bold text-sm">Authentication Required</p>
+              <p className="text-xs text-rose-700">{authError}</p>
+            </div>
+          </div>
+          <a
+            href="/login"
+            className="self-start sm:self-auto px-4 py-2 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+          >
+            Log In with Account
+          </a>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-2 mb-8 p-1.5 rounded-2xl glass-panel border border-white/60">

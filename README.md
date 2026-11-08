@@ -365,3 +365,27 @@ The application includes a dedicated **Review Console** at `/review` designed sp
    - **7-Day Rolling Weekly Nutrient Averages**
    - **Most-Logged Recipes in Catalog**
    - **Protein Efficiency Ranking**
+
+---
+
+## 8. Review Console & Evaluation Mode Security
+
+The application includes an API-level security gatekeeper to reconcile local viva evaluations with production-grade security.
+
+### Key Policies:
+1. **Local Evaluation Mode (`NODE_ENV=development` & `EVALUATION_MODE=true`):**
+   - Enables anonymous access to the Review Console (`/review`) and all `/api/review/*` inspection and demo routes for viva evaluation.
+   - Must be explicitly enabled in `.env.local`.
+2. **Production Mode (`NODE_ENV=production`):**
+   - Strictly enforces JWT authentication on **all** `/api/review/*` and `/api/admin/*` endpoints.
+   - `EVALUATION_MODE=true` is **ignored** in production.
+   - Fails safely if `JWT_SECRET` is missing or insecure (<32 characters).
+3. **Protected Endpoints:**
+   - 10 database inspection endpoints (MySQL tables, indexes, constraints, triggers, views, analytical queries, MongoDB indexes, explain plans).
+   - 2 transactional write demo endpoints (`/api/review/triggers/[name]/demo`, `/api/review/dataflow/demo`).
+   - 1 cross-database consistency audit endpoint (`/api/admin/sync-check`).
+4. **Error Sanitization:**
+   - All review endpoints scrub database credentials, connection strings (`mongodb://...`, `mysql://...`), passwords, and stack traces before returning responses.
+
+For detailed architecture, threat modeling, and deployment instructions, see [docs/SECURITY_AND_EVALUATION_MODE.md](docs/SECURITY_AND_EVALUATION_MODE.md).
+

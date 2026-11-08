@@ -1,8 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/mysql';
 import type { RowDataPacket } from 'mysql2';
+import { requireReviewAccess, sanitizeError } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const authCheck = await requireReviewAccess(req);
+  if (!authCheck.authorized) {
+    return authCheck.response;
+  }
+
   try {
     const [rows] = await pool.execute<RowDataPacket[]>(
       `SELECT TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
@@ -13,6 +19,9 @@ export async function GET() {
     );
     return NextResponse.json(rows);
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json(
+      { error: sanitizeError(err, 'Failed to fetch foreign key constraints') },
+      { status: 500 }
+    );
   }
 }

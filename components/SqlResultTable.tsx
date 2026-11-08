@@ -1,5 +1,5 @@
 export default function SqlResultTable({ rows }: { rows: Array<Record<string, unknown>> }) {
-  if (!rows || rows.length === 0) {
+  if (!rows || !Array.isArray(rows) || rows.length === 0) {
     return (
       <div className="p-4 rounded-2xl bg-white/60 border border-slate-200/60 text-xs text-slate-500 italic text-center">
         Zero rows returned by query.
