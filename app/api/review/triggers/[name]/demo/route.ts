@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/mysql';
 import type { RowDataPacket, PoolConnection } from 'mysql2/promise';
+import { requireReviewAccess, sanitizeError } from '@/lib/auth';
 
 /**
  * Creates an isolated temporary user within an active transaction.
@@ -22,6 +23,11 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ name: string }> }
 ) {
+  const authCheck = await requireReviewAccess(req);
+  if (!authCheck.authorized) {
+    return authCheck.response;
+  }
+
   const { name } = await params;
   const conn = await pool.getConnection();
 
@@ -404,7 +410,10 @@ export async function POST(
     return NextResponse.json(result);
   } catch (err) {
     try { await conn.rollback(); } catch {}
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json(
+      { error: sanitizeError(err, 'Failed to execute trigger demonstration') },
+      { status: 500 }
+    );
   } finally {
     try { await conn.rollback(); } catch {}
     conn.release();

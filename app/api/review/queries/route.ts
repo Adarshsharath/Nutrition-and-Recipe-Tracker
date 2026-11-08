@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/mysql';
 import type { RowDataPacket } from 'mysql2';
+import { requireReviewAccess, sanitizeError } from '@/lib/auth';
 
 const QUERIES: Record<string, { label: string; sql: string }> = {
   overCalorie: {
@@ -55,6 +56,11 @@ const QUERIES: Record<string, { label: string; sql: string }> = {
 };
 
 export async function GET(req: NextRequest) {
+  const authCheck = await requireReviewAccess(req);
+  if (!authCheck.authorized) {
+    return authCheck.response;
+  }
+
   try {
     const qname = req.nextUrl.searchParams.get('q');
     if (qname) {
@@ -66,6 +72,9 @@ export async function GET(req: NextRequest) {
     // Return query list
     return NextResponse.json(Object.entries(QUERIES).map(([key, v]) => ({ key, label: v.label })));
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json(
+      { error: sanitizeError(err, 'Failed to execute query') },
+      { status: 500 }
+    );
   }
 }

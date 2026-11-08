@@ -1,10 +1,16 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createRecipe } from '@/lib/recipes-service';
 import { getDb } from '@/lib/mongo';
 import pool from '@/lib/mysql';
 import type { RowDataPacket } from 'mysql2';
+import { requireReviewAccess, sanitizeError } from '@/lib/auth';
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const authCheck = await requireReviewAccess(req);
+  if (!authCheck.authorized) {
+    return authCheck.response;
+  }
+
   try {
     const sampleData = {
       recipe_name:          'Demo Dual-Write Recipe ' + Date.now(),
@@ -30,6 +36,7 @@ export async function POST() {
 
     // Retrieve from both DBs for side-by-side display
     const db = await getDb();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mongoDoc = await db.collection('recipes').findOne({ _id: recipe_id } as any);
 
     const [mysqlRows] = await pool.execute<RowDataPacket[]>(
@@ -45,6 +52,9 @@ export async function POST() {
       mysql:    mysqlRow,
     });
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json(
+      { error: sanitizeError(err, 'Failed to execute dual-write demo') },
+      { status: 500 }
+    );
   }
 }
