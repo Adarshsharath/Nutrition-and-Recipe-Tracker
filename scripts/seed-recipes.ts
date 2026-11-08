@@ -3,7 +3,8 @@
  * Seeds 25 recipes into MongoDB and matching rows into MySQL recipe_catalog.
  * Run: npx tsx scripts/seed-recipes.ts
  */
-import { MongoClient } from 'mongodb';
+import { MongoClient, type Filter, type Document } from 'mongodb';
+import type { RowDataPacket } from 'mysql2';
 import pool from '../lib/mysql';
 
 const uri    = process.env.MONGODB_URI ?? 'mongodb://localhost:27017';
@@ -574,24 +575,46 @@ async function main() {
   const db = client.db(dbName);
   const col = db.collection('recipes');
 
-  console.log(`Seeding ${RECIPES.length} recipes into MongoDB…`);
+  console.log(`Seeding ${RECIPES.length} recipes into MongoDB and MySQL…`);
 
-  for (const recipe of RECIPES) {
-    await col.replaceOne({ _id: recipe._id } as any, recipe as any, { upsert: true });
-    console.log(`  ✓ Mongo: ${recipe.recipe_name}`);
+  try {
+    for (const recipe of RECIPES) {
+      // Check existing states in both databases to avoid silently reactivating archived recipes
+      const existingMongo = await col.findOne({ _id: recipe._id } as unknown as Filter<Document>);
+      const [existingMysql] = await pool.execute<RowDataPacket[]>(
+        'SELECT is_active FROM recipe_catalog WHERE recipe_id = ?',
+        [recipe._id]
+      );
 
-    await pool.execute(
-      `INSERT INTO recipe_catalog (recipe_id, recipe_name, cuisine, is_active)
-       VALUES (?, ?, ?, TRUE)
-       ON DUPLICATE KEY UPDATE recipe_name = VALUES(recipe_name), cuisine = VALUES(cuisine)`,
-      [recipe._id, recipe.recipe_name, recipe.cuisine ?? null]
-    );
-    console.log(`  ✓ MySQL: ${recipe.recipe_name}`);
+      // If already marked archived in Mongo or inactive in MySQL, preserve archived/inactive state
+      const isArchived = Boolean(existingMongo?.archived) || (existingMysql.length > 0 && !Boolean(existingMysql[0].is_active));
+      const isActive = !isArchived;
+
+      const docToStore = {
+        ...recipe,
+        archived: isArchived,
+      };
+
+      await col.replaceOne({ _id: recipe._id } as unknown as Filter<Document>, docToStore as unknown as Document, { upsert: true });
+      console.log(`  ✓ Mongo: ${recipe.recipe_name} (${isArchived ? 'archived' : 'active'})`);
+
+      await pool.execute(
+        `INSERT INTO recipe_catalog (recipe_id, recipe_name, cuisine, is_active)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           recipe_name = VALUES(recipe_name),
+           cuisine = VALUES(cuisine),
+           is_active = VALUES(is_active)`,
+        [recipe._id, recipe.recipe_name, recipe.cuisine ?? null, isActive]
+      );
+      console.log(`  ✓ MySQL: ${recipe.recipe_name} (${isActive ? 'active' : 'inactive'})`);
+    }
+
+    console.log(`\n✅ Seeded ${RECIPES.length} recipes into both DBs synchronously.`);
+  } finally {
+    await client.close();
+    await pool.end();
   }
-
-  await client.close();
-  await pool.end();
-  console.log(`\n✅ Seeded ${RECIPES.length} recipes into both DBs.`);
 }
 
 main().catch((err) => { console.error(err); process.exit(1); });

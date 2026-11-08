@@ -6,6 +6,9 @@ export async function GET() {
     const result = await syncCheck();
     return NextResponse.json(result);
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to execute cross-database synchronization check', details: (err as Error).message },
+      { status: 500 }
+    );
   }
 }
