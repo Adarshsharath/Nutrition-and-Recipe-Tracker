@@ -36,6 +36,30 @@ export interface SyncLogEntry {
   error?: string;
 }
 
+export interface MetadataMismatch {
+  recipe_id: string;
+  field: 'recipe_name' | 'cuisine';
+  mongodb_value: string | null;
+  mysql_value: string | null;
+}
+
+export interface StatusMismatch {
+  recipe_id: string;
+  recipe_name: string;
+  mongodb_archived: boolean;
+  mysql_is_active: boolean;
+  issue: string;
+}
+
+export interface SyncCheckResult {
+  onlyInMongo: string[];
+  onlyInMySQL: string[];
+  metadataMismatches: MetadataMismatch[];
+  statusMismatches: StatusMismatch[];
+  isConsistent: boolean;
+  totalChecked: number;
+}
+
 // ── CREATE (dual-write with compensation) ────────────────────────────────────
 export async function createRecipe(
   data: Omit<RecipeDocument, '_id'> & { _id?: string }
@@ -494,21 +518,120 @@ export async function searchRecipes(filter: RecipeFilter): Promise<RecipeDocumen
   return docs as unknown as RecipeDocument[];
 }
 
-// ── CONSISTENCY CHECK ─────────────────────────────────────────────────────────
-export async function syncCheck(): Promise<{
-  onlyInMongo: string[];
-  onlyInMySQL: string[];
-}> {
+// ── COMPREHENSIVE CONSISTENCY CHECK ──────────────────────────────────────────
+export async function syncCheck(): Promise<SyncCheckResult> {
   const db = await getDb();
 
-  const mongoDocs = await db.collection('recipes').find({}, { projection: { _id: 1 } }).toArray();
-  const mongoIds = new Set(mongoDocs.map((d: Document) => String(d._id)));
+  // 1. Fetch all documents from MongoDB
+  const mongoDocs = await db.collection('recipes').find(
+    {},
+    { projection: { _id: 1, recipe_name: 1, cuisine: 1, archived: 1 } }
+  ).toArray();
 
-  const [mysqlRows] = await pool.execute<RowDataPacket[]>('SELECT recipe_id FROM recipe_catalog', []);
-  const mysqlIds = new Set(mysqlRows.map((r: RowDataPacket) => String(r.recipe_id)));
+  const mongoMap = new Map<string, { recipe_name: string; cuisine: string | null; archived: boolean }>();
+  for (const doc of mongoDocs) {
+    mongoMap.set(String(doc._id), {
+      recipe_name: String(doc.recipe_name ?? ''),
+      cuisine: doc.cuisine ? String(doc.cuisine) : null,
+      archived: Boolean(doc.archived),
+    });
+  }
 
-  const onlyInMongo = [...mongoIds].filter((id) => !mysqlIds.has(id));
-  const onlyInMySQL = [...mysqlIds].filter((id) => !mongoIds.has(id));
+  // 2. Fetch all rows from MySQL
+  const [mysqlRows] = await pool.execute<RowDataPacket[]>(
+    'SELECT recipe_id, recipe_name, cuisine, is_active FROM recipe_catalog'
+  );
 
-  return { onlyInMongo, onlyInMySQL };
+  const mysqlMap = new Map<string, { recipe_name: string; cuisine: string | null; is_active: boolean }>();
+  for (const row of mysqlRows) {
+    mysqlMap.set(String(row.recipe_id), {
+      recipe_name: String(row.recipe_name ?? ''),
+      cuisine: row.cuisine ? String(row.cuisine) : null,
+      is_active: Boolean(row.is_active),
+    });
+  }
+
+  // 3. Detect recipes existing only in one database
+  const onlyInMongo: string[] = [];
+  for (const id of mongoMap.keys()) {
+    if (!mysqlMap.has(id)) {
+      onlyInMongo.push(id);
+    }
+  }
+
+  const onlyInMySQL: string[] = [];
+  for (const id of mysqlMap.keys()) {
+    if (!mongoMap.has(id)) {
+      onlyInMySQL.push(id);
+    }
+  }
+
+  // 4. Detect metadata and status mismatches for shared records
+  const metadataMismatches: MetadataMismatch[] = [];
+  const statusMismatches: StatusMismatch[] = [];
+
+  for (const [id, mDoc] of mongoMap.entries()) {
+    const sRow = mysqlMap.get(id);
+    if (!sRow) continue;
+
+    // Check recipe_name mismatch
+    if (mDoc.recipe_name.trim() !== sRow.recipe_name.trim()) {
+      metadataMismatches.push({
+        recipe_id: id,
+        field: 'recipe_name',
+        mongodb_value: mDoc.recipe_name,
+        mysql_value: sRow.recipe_name,
+      });
+    }
+
+    // Check cuisine mismatch
+    const mCuisine = mDoc.cuisine ? mDoc.cuisine.trim().toLowerCase() : null;
+    const sCuisine = sRow.cuisine ? sRow.cuisine.trim().toLowerCase() : null;
+    if (mCuisine !== sCuisine) {
+      metadataMismatches.push({
+        recipe_id: id,
+        field: 'cuisine',
+        mongodb_value: mDoc.cuisine,
+        mysql_value: sRow.cuisine,
+      });
+    }
+
+    // Check archive / active status mismatch
+    // Consistent state: (archived === true AND is_active === false) OR (archived === false AND is_active === true)
+    const mongoArchived = mDoc.archived;
+    const mysqlActive = sRow.is_active;
+
+    if (mongoArchived && mysqlActive) {
+      statusMismatches.push({
+        recipe_id: id,
+        recipe_name: mDoc.recipe_name || sRow.recipe_name,
+        mongodb_archived: true,
+        mysql_is_active: true,
+        issue: 'Recipe is archived (true) in MongoDB but active (true) in MySQL',
+      });
+    } else if (!mongoArchived && !mysqlActive) {
+      statusMismatches.push({
+        recipe_id: id,
+        recipe_name: mDoc.recipe_name || sRow.recipe_name,
+        mongodb_archived: false,
+        mysql_is_active: false,
+        issue: 'Recipe is active (archived:false) in MongoDB but inactive (is_active:false) in MySQL',
+      });
+    }
+  }
+
+  const isConsistent =
+    onlyInMongo.length === 0 &&
+    onlyInMySQL.length === 0 &&
+    metadataMismatches.length === 0 &&
+    statusMismatches.length === 0;
+
+  return {
+    onlyInMongo,
+    onlyInMySQL,
+    metadataMismatches,
+    statusMismatches,
+    isConsistent,
+    totalChecked: mongoMap.size,
+  };
 }

@@ -38,6 +38,7 @@ export default function ReviewPage() {
   const [mongoExplain, setMongoExplain] = useState<unknown>(null);
   const [explainFilter, setExplainFilter] = useState({ cuisine: 'Indian', meal_type: 'dinner', tag: 'vegetarian' });
   const [dataflowResult, setDataflowResult] = useState<unknown>(null);
+  const [syncCheckResult, setSyncCheckResult] = useState<Record<string, unknown> | null>(null);
   const [queryResults, setQueryResults] = useState<Record<string, { label: string; sql: string; rows: unknown[] }>>({});
   const [loading, setLoading] = useState(false);
 
@@ -127,6 +128,16 @@ export default function ReviewPage() {
     try {
       const res = await fetch('/api/review/dataflow/demo', { method: 'POST' });
       setDataflowResult(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runSyncAudit() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/sync-check');
+      setSyncCheckResult(await res.json());
     } finally {
       setLoading(false);
     }
@@ -558,6 +569,62 @@ END$$`}</pre>
               </div>
             </div>
           )}
+
+          {/* Cross-Database Sync Audit */}
+          <div className="glass-panel rounded-3xl border border-white/60 p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-lg mb-1">Cross-Database Consistency Audit</h3>
+                <p className="text-xs text-slate-600">
+                  Scans all recipes across MongoDB and MySQL to verify UUID parity, metadata alignment, and archive status consistency.
+                </p>
+              </div>
+              <button
+                onClick={runSyncAudit}
+                disabled={loading}
+                className="px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 text-white rounded-2xl hover:scale-105 transition-all text-xs font-bold shadow-md shadow-emerald-500/20 disabled:opacity-50 whitespace-nowrap"
+              >
+                {loading ? 'Running Audit…' : '🔍 Run Consistency Audit'}
+              </button>
+            </div>
+
+            {!!syncCheckResult && (
+              <div className="space-y-4 pt-2">
+                <div className={`p-4 rounded-2xl border text-xs font-medium flex items-center justify-between ${syncCheckResult.isConsistent ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-rose-50 border-rose-200 text-rose-900'}`}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">{syncCheckResult.isConsistent ? '✅' : '⚠️'}</span>
+                    <span className="font-bold">
+                      {syncCheckResult.isConsistent ? 'All checked records are 100% consistent across MongoDB and MySQL.' : 'Synchronization discrepancies detected!'}
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-mono">
+                    Total checked: {String(syncCheckResult.totalChecked ?? 0)}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div className="p-3 bg-white/70 rounded-xl border border-slate-200/70">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Only in Mongo</p>
+                    <p className="text-base font-black text-slate-900">{(syncCheckResult.onlyInMongo as unknown[])?.length ?? 0}</p>
+                  </div>
+                  <div className="p-3 bg-white/70 rounded-xl border border-slate-200/70">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Only in MySQL</p>
+                    <p className="text-base font-black text-slate-900">{(syncCheckResult.onlyInMySQL as unknown[])?.length ?? 0}</p>
+                  </div>
+                  <div className="p-3 bg-white/70 rounded-xl border border-slate-200/70">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Metadata Mismatches</p>
+                    <p className="text-base font-black text-slate-900">{(syncCheckResult.metadataMismatches as unknown[])?.length ?? 0}</p>
+                  </div>
+                  <div className="p-3 bg-white/70 rounded-xl border border-slate-200/70">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Status Mismatches</p>
+                    <p className="text-base font-black text-slate-900">{(syncCheckResult.statusMismatches as unknown[])?.length ?? 0}</p>
+                  </div>
+                </div>
+
+                <JsonViewer data={syncCheckResult} maxHeight={260} />
+              </div>
+            )}
+          </div>
         </div>
       )}
 
