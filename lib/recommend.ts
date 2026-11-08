@@ -2,16 +2,66 @@ import pool from './mysql';
 import { getDb } from './mongo';
 import type { RecipeDocument } from './recipes-service';
 import type { RowDataPacket } from 'mysql2';
+import type { Filter, Document } from 'mongodb';
 
-// Dietary tag map: diet_type → allowed tags (empty = all)
-const DIET_TAG_MAP: Record<string, string[]> = {
-  vegetarian:    ['vegetarian', 'vegan', 'eggetarian'],
-  vegan:         ['vegan'],
-  eggetarian:    ['vegetarian', 'vegan', 'eggetarian'],
-  pescatarian:   ['vegetarian', 'vegan', 'eggetarian', 'pescatarian'],
-  non_vegetarian: [],
-  other:          [],
-};
+// ── DIETARY COMPATIBILITY MODEL ──────────────────────────────────────────────
+export interface DietaryRules {
+  allowedTags: string[];
+  disallowedTags: string[];
+  inherentExcludedAllergens: string[];
+}
+
+/**
+ * Returns allowed tags, strictly disallowed tags, and inherent allergen exclusions
+ * for each canonical diet type.
+ *
+ * Dietary Hierarchy:
+ *   vegan ⊂ vegetarian ⊂ eggetarian ⊂ pescatarian ⊂ non_vegetarian
+ *
+ * Rules:
+ *   - vegan: strictly plant-based; rejects egg, dairy/milk, seafood, meat.
+ *   - vegetarian: rejects eggs, fish, seafood, and meat.
+ *   - eggetarian: allows eggs; rejects fish, seafood, and meat.
+ *   - pescatarian: allows fish and seafood; rejects poultry and meat.
+ *   - non_vegetarian & other: unrestricted by diet type.
+ */
+export function getDietaryRules(dietType: string): DietaryRules {
+  const norm = (dietType || '').toLowerCase().trim();
+  switch (norm) {
+    case 'vegan':
+      return {
+        allowedTags: ['vegan'],
+        disallowedTags: ['eggetarian', 'pescatarian', 'non_vegetarian', 'non-vegetarian'],
+        inherentExcludedAllergens: ['milk', 'dairy', 'lactose', 'egg', 'eggs', 'fish', 'shellfish'],
+      };
+    case 'vegetarian':
+      return {
+        allowedTags: ['vegetarian', 'vegan'],
+        disallowedTags: ['eggetarian', 'pescatarian', 'non_vegetarian', 'non-vegetarian'],
+        inherentExcludedAllergens: ['egg', 'eggs', 'fish', 'shellfish'],
+      };
+    case 'eggetarian':
+      return {
+        allowedTags: ['vegetarian', 'vegan', 'eggetarian'],
+        disallowedTags: ['pescatarian', 'non_vegetarian', 'non-vegetarian'],
+        inherentExcludedAllergens: ['fish', 'shellfish'],
+      };
+    case 'pescatarian':
+      return {
+        allowedTags: ['vegetarian', 'vegan', 'eggetarian', 'pescatarian'],
+        disallowedTags: ['non_vegetarian', 'non-vegetarian'],
+        inherentExcludedAllergens: [],
+      };
+    case 'non_vegetarian':
+    case 'other':
+    default:
+      return {
+        allowedTags: [],
+        disallowedTags: [],
+        inherentExcludedAllergens: [],
+      };
+  }
+}
 
 // Meals remaining given current hour
 function mealsRemainingToday(hour: number): number {
@@ -95,19 +145,28 @@ export async function getRecommendations(
   const budget      = remaining / mealsLeft;
 
   const dietType    = profile?.diet_type ?? 'other';
-  const allergens   = [
+  const dietRules   = getDietaryRules(dietType);
+
+  const allergens   = Array.from(new Set([
     ...parseAllergens(profile?.allergy_notes),
     ...parseAllergens(profile?.intolerance_notes),
-  ];
+    ...dietRules.inherentExcludedAllergens,
+  ]));
 
   const mealType    = params.meal_type ?? inferMealType(hour);
-  const allowedTags = DIET_TAG_MAP[dietType] ?? [];
 
   // 2. Build MongoDB filter
-  const mongoFilter: Record<string, any> = { archived: { $ne: true } };
+  const mongoFilter: Record<string, unknown> = { archived: { $ne: true } };
 
-  if (allowedTags.length > 0) {
-    mongoFilter.dietary_tags = { $in: allowedTags };
+  if (dietRules.allowedTags.length > 0) {
+    if (dietRules.disallowedTags.length > 0) {
+      mongoFilter.dietary_tags = {
+        $in: dietRules.allowedTags,
+        $nin: dietRules.disallowedTags,
+      };
+    } else {
+      mongoFilter.dietary_tags = { $in: dietRules.allowedTags };
+    }
   }
   if (allergens.length > 0) {
     mongoFilter.allergens = { $nin: allergens };
@@ -123,16 +182,16 @@ export async function getRecommendations(
   // 3. Query MongoDB
   const db = await getDb();
   let docs = await db.collection('recipes')
-    .find(mongoFilter)
+    .find(mongoFilter as Filter<Document>)
     .limit(20)
     .toArray();
 
   // If strict filter returns nothing, relax calories
   if (docs.length === 0) {
-    const relaxedFilter: Record<string, any> = { ...mongoFilter };
+    const relaxedFilter: Record<string, unknown> = { ...mongoFilter };
     delete relaxedFilter['nutrition_per_serving.calories'];
     docs = await db.collection('recipes')
-      .find(relaxedFilter)
+      .find(relaxedFilter as Filter<Document>)
       .limit(20)
       .toArray();
   }
