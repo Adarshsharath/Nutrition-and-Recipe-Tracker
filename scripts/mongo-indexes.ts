@@ -16,7 +16,7 @@ try {
       const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
       if (match) {
         const key = match[1];
-        let val = (match[2] || '').trim().replace(/^['"](.*)['"]$/, '$1').trim();
+        const val = (match[2] || '').trim().replace(/^['"](.*)['"]$/, '$1').trim();
         if (!process.env[key]) {
           process.env[key] = val;
         }
