@@ -63,6 +63,293 @@ export function getDietaryRules(dietType: string): DietaryRules {
   }
 }
 
+// ── CANONICAL ALLERGEN NORMALIZATION ────────────────────────────────────────
+export interface AllergenRule {
+  category: string;
+  dbTokens: string[];
+  pattern: RegExp;
+}
+
+export const CANONICAL_ALLERGEN_RULES: AllergenRule[] = [
+  {
+    category: 'milk',
+    dbTokens: ['milk', 'dairy', 'lactose'],
+    pattern: /\b(milk|dairy|lactose|cheese|butter|paneer|curd|yogurt|cream|ghee|whey|casein)\b/i,
+  },
+  {
+    category: 'egg',
+    dbTokens: ['egg', 'eggs'],
+    pattern: /\b(eggs?|egg-whites?|egg-yolks?|albumen|mayonnaise)\b/i,
+  },
+  {
+    category: 'gluten',
+    dbTokens: ['gluten', 'wheat'],
+    pattern: /\b(gluten|wheat|barley|rye|flour|maida|atta|semolina|sooji|oats)\b/i,
+  },
+  {
+    category: 'peanut',
+    dbTokens: ['peanut', 'peanuts'],
+    pattern: /\b(peanuts?|groundnuts?|arachis)\b/i,
+  },
+  {
+    category: 'cashew',
+    dbTokens: ['cashew', 'cashews', 'tree_nut', 'tree nuts', 'nut', 'nuts'],
+    pattern: /\b(cashews?|kaju)\b/i,
+  },
+  {
+    category: 'almond',
+    dbTokens: ['almond', 'almonds', 'tree_nut', 'tree nuts', 'nut', 'nuts'],
+    pattern: /\b(almonds?|badam)\b/i,
+  },
+  {
+    category: 'walnut',
+    dbTokens: ['walnut', 'walnuts', 'tree_nut', 'tree nuts', 'nut', 'nuts'],
+    pattern: /\b(walnuts?|akhrot)\b/i,
+  },
+  {
+    category: 'pistachio',
+    dbTokens: ['pistachio', 'pistachios', 'tree_nut', 'tree nuts', 'nut', 'nuts'],
+    pattern: /\b(pistachios?|pistas?)\b/i,
+  },
+  {
+    category: 'tree_nut',
+    dbTokens: ['tree_nut', 'tree nuts', 'nut', 'nuts', 'almond', 'cashew', 'walnut', 'pistachio', 'hazelnut', 'pecan'],
+    pattern: /\b(tree\s*nuts?|treenuts?|hazelnuts?|pecans?|macadamias?|brazil\s*nuts?)\b/i,
+  },
+  {
+    category: 'soy',
+    dbTokens: ['soy', 'soya', 'soybean'],
+    pattern: /\b(soya?|soybeans?|tofu|edamame|tempeh|miso)\b/i,
+  },
+  {
+    category: 'fish',
+    dbTokens: ['fish'],
+    pattern: /\b(fish|salmon|tuna|cod|tilapia|trout|anchov(y|ies)|halibut|sardines?|mackerel)\b/i,
+  },
+  {
+    category: 'shellfish',
+    dbTokens: ['shellfish'],
+    pattern: /\b(shellfish|prawns?|shrimps?|crabs?|lobsters?|clams?|oysters?|mussels?|scallops?)\b/i,
+  },
+  {
+    category: 'sesame',
+    dbTokens: ['sesame'],
+    pattern: /\b(sesame(\s*seeds?)?|tahini|til|gingelly)\b/i,
+  },
+  {
+    category: 'mustard',
+    dbTokens: ['mustard'],
+    pattern: /\b(mustards?(\s*seeds?)?|dijon|sarson)\b/i,
+  },
+];
+
+const STOP_WORDS = new Set([
+  'i', 'have', 'an', 'a', 'the', 'allergic', 'allergy', 'allergies',
+  'intolerance', 'intolerant', 'to', 'severe', 'mild', 'strict', 'no',
+  'none', 'na', 'n/a', 'nil', 'nothing', 'avoid', 'avoids', 'reaction',
+  'sensitive', 'sensitivity', 'and', 'or', 'with', 'also', 'only',
+  'all', 'any', 'my', 'is', 'in', 'of', 'for', 'but'
+]);
+
+export interface NormalizedAllergens {
+  categories: string[];
+  dbTokens: string[];
+  unknownAllergens: string[];
+}
+
+/**
+ * Normalizes free-form allergy and intolerance text notes.
+ * Extracts recognized canonical categories, expands them into database query tokens,
+ * and isolates any unknown or unverified allergen terms for conservative handling.
+ */
+export function normalizeAllergens(text?: string | null): NormalizedAllergens {
+  if (!text || typeof text !== 'string') {
+    return { categories: [], dbTokens: [], unknownAllergens: [] };
+  }
+
+  const raw = text.trim();
+  if (!raw) {
+    return { categories: [], dbTokens: [], unknownAllergens: [] };
+  }
+
+  const matchedCategories = new Set<string>();
+  const dbTokens = new Set<string>();
+
+  for (const rule of CANONICAL_ALLERGEN_RULES) {
+    if (rule.pattern.test(raw)) {
+      matchedCategories.add(rule.category);
+      rule.dbTokens.forEach((t) => dbTokens.add(t));
+    }
+  }
+
+  // Handle generic 'nut' / 'nuts' if not water chestnuts, butternut squash, or nutmeg
+  if (/\bnuts?\b/i.test(raw) && !/\b(water\s+chestnuts?|butternut|nutmeg)\b/i.test(raw)) {
+    matchedCategories.add('tree_nut');
+    matchedCategories.add('peanut');
+    ['peanut', 'peanuts', 'tree_nut', 'tree nuts', 'nut', 'nuts', 'almond', 'cashew', 'walnut', 'pistachio'].forEach((t) => dbTokens.add(t));
+  }
+
+  // Split into clauses to identify unknown allergy terms
+  const clauses = raw
+    .split(/[,;\n/]+|\band\b|\bwith\b/i)
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  const unknownAllergens: string[] = [];
+
+  for (const clause of clauses) {
+    let matchedInClause = false;
+    for (const rule of CANONICAL_ALLERGEN_RULES) {
+      if (rule.pattern.test(clause)) {
+        matchedInClause = true;
+        break;
+      }
+    }
+    if (!matchedInClause && /\bnuts?\b/i.test(clause) && !/\b(water\s+chestnuts?|butternut|nutmeg)\b/i.test(clause)) {
+      matchedInClause = true;
+    }
+
+    if (!matchedInClause) {
+      const words = clause
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length > 1 && !STOP_WORDS.has(w));
+
+      if (words.length > 0) {
+        const candidate = words.join(' ');
+        if (!unknownAllergens.includes(candidate)) {
+          unknownAllergens.push(candidate);
+        }
+      }
+    }
+  }
+
+  return {
+    categories: Array.from(matchedCategories),
+    dbTokens: Array.from(dbTokens),
+    unknownAllergens,
+  };
+}
+
+// ── MONGODB FILTER BUILDER ───────────────────────────────────────────────────
+export function buildMongoFilter(options: {
+  dietType: string;
+  userAllergenDbTokens: string[];
+  unknownAllergens?: string[];
+  mealType?: string;
+  calLow?: number;
+  calHigh?: number;
+}): Record<string, unknown> {
+  const filter: Record<string, unknown> = {
+    archived: { $ne: true },
+  };
+
+  const dietRules = getDietaryRules(options.dietType);
+
+  // 1. Dietary tags
+  if (dietRules.allowedTags.length > 0) {
+    if (dietRules.disallowedTags.length > 0) {
+      filter.dietary_tags = {
+        $in: dietRules.allowedTags,
+        $nin: dietRules.disallowedTags,
+      };
+    } else {
+      filter.dietary_tags = { $in: dietRules.allowedTags };
+    }
+  }
+
+  // 2. Allergens (user allergens + inherent dietary exclusions)
+  const allExcludedAllergens = Array.from(
+    new Set([...dietRules.inherentExcludedAllergens, ...options.userAllergenDbTokens])
+  );
+  if (allExcludedAllergens.length > 0) {
+    filter.allergens = { $nin: allExcludedAllergens };
+  }
+
+  // 3. Meal type filter
+  if (options.mealType) {
+    filter.meal_type = options.mealType;
+  }
+
+  // 4. Calorie filter (only if bounds are provided)
+  if (options.calLow !== undefined && options.calHigh !== undefined) {
+    filter['nutrition_per_serving.calories'] = {
+      $gte: options.calLow,
+      $lte: options.calHigh,
+    };
+  }
+
+  // 5. Unknown allergy terms: conservative ingredient name and title exclusions
+  if (options.unknownAllergens && options.unknownAllergens.length > 0) {
+    const unknownExclusions: Array<Record<string, unknown>> = [];
+    for (const term of options.unknownAllergens) {
+      const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const rx = new RegExp(escaped, 'i');
+      unknownExclusions.push(
+        { recipe_name: { $not: rx } },
+        { 'ingredients.name': { $not: rx } }
+      );
+    }
+    if (unknownExclusions.length > 0) {
+      filter.$and = unknownExclusions;
+    }
+  }
+
+  return filter;
+}
+
+// ── PURE RECIPE COMPATIBILITY CHECKER (FOR VERIFICATION) ────────────────────
+export function isRecipeCompatible(
+  recipe: RecipeDocument,
+  profile: {
+    diet_type: string;
+    allergy_notes?: string | null;
+    intolerance_notes?: string | null;
+  }
+): { compatible: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  const dietRules = getDietaryRules(profile.diet_type);
+
+  // Check dietary tags
+  const tags = (recipe.dietary_tags || []).map((t) => t.toLowerCase().trim());
+  if (dietRules.allowedTags.length > 0) {
+    const hasAllowed = dietRules.allowedTags.some((t) => tags.includes(t.toLowerCase()));
+    if (!hasAllowed) {
+      reasons.push(`Recipe tags [${tags.join(', ')}] missing required dietary tag for ${profile.diet_type}`);
+    }
+  }
+  if (dietRules.disallowedTags.length > 0) {
+    const hasDisallowed = dietRules.disallowedTags.some((t) => tags.includes(t.toLowerCase()));
+    if (hasDisallowed) {
+      reasons.push(`Recipe contains disallowed dietary tag for ${profile.diet_type}`);
+    }
+  }
+
+  // Check allergens
+  const recipeAllergens = (recipe.allergens || []).map((a) => a.toLowerCase().trim());
+  const normalizedAllergies = normalizeAllergens(profile.allergy_notes);
+  const normalizedIntolerances = normalizeAllergens(profile.intolerance_notes);
+  const allExcluded = Array.from(
+    new Set([
+      ...normalizedAllergies.dbTokens,
+      ...normalizedIntolerances.dbTokens,
+      ...dietRules.inherentExcludedAllergens,
+    ])
+  );
+
+  for (const excluded of allExcluded) {
+    if (recipeAllergens.includes(excluded.toLowerCase())) {
+      reasons.push(`Recipe contains excluded allergen: ${excluded}`);
+    }
+  }
+
+  return {
+    compatible: reasons.length === 0,
+    reasons,
+  };
+}
+
 // Meals remaining given current hour
 function mealsRemainingToday(hour: number): number {
   if (hour < 9)  return 4; // breakfast/lunch/snack/dinner
@@ -80,28 +367,20 @@ function inferMealType(hour: number): string {
   return 'dinner';
 }
 
-// Parse keyword allergens from free text
-function parseAllergens(text?: string | null): string[] {
-  if (!text) return [];
-  const keywords = ['milk','dairy','egg','gluten','wheat','nut','peanut',
-                    'soy','shellfish','fish','sesame','mustard'];
-  const lower = text.toLowerCase();
-  return keywords.filter((k) => lower.includes(k));
-}
-
 export interface RecommendationResult {
-  recipe:     RecipeDocument;
-  score:      number;
-  why:        string;
+  recipe: RecipeDocument;
+  score: number;
+  why: string;
   mongoFilter: object;
   mysqlContext: {
-    goal_type:       string | null;
+    goal_type: string | null;
     target_calories: number | null;
-    today_calories:  number;
-    remaining_cal:   number;
+    today_calories: number;
+    remaining_cal: number;
     budget_per_meal: number;
-    diet_type:       string;
-    allergens:       string[];
+    diet_type: string;
+    allergens: string[];
+    unrecognized_allergens?: string[];
   };
 }
 
@@ -110,7 +389,7 @@ export async function getRecommendations(
   params: { meal_type?: string; date?: string }
 ): Promise<RecommendationResult[]> {
   const today = params.date ?? new Date().toISOString().split('T')[0];
-  const hour  = new Date().getHours();
+  const hour = new Date().getHours();
 
   // 1. Fetch active goal + dietary profile from MySQL
   const [goalRows] = await pool.execute<RowDataPacket[]>(
@@ -136,60 +415,65 @@ export async function getRecommendations(
   );
   const logRow = logRows[0];
 
-  const goal        = goalRow   as { goal_type: string; target_calories: number; target_protein_g: number } | undefined;
-  const profile     = profileRow as { diet_type: string; allergy_notes: string | null; intolerance_notes: string | null } | undefined;
-  const todayCal    = Number(logRow?.total_calories ?? 0);
-  const targetCal   = Number(goal?.target_calories ?? 2000);
-  const remaining   = Math.max(0, targetCal - todayCal);
-  const mealsLeft   = mealsRemainingToday(hour);
-  const budget      = remaining / mealsLeft;
+  const goal = goalRow as { goal_type: string; target_calories: number; target_protein_g: number } | undefined;
+  const profile = profileRow as { diet_type: string; allergy_notes: string | null; intolerance_notes: string | null } | undefined;
+  const todayCal = Number(logRow?.total_calories ?? 0);
+  const targetCal = Number(goal?.target_calories ?? 2000);
+  const remaining = Math.max(0, targetCal - todayCal);
+  const mealsLeft = mealsRemainingToday(hour);
+  const budget = Math.max(100, remaining / mealsLeft);
 
-  const dietType    = profile?.diet_type ?? 'other';
-  const dietRules   = getDietaryRules(dietType);
+  const dietType = profile?.diet_type ?? 'other';
 
-  const allergens   = Array.from(new Set([
-    ...parseAllergens(profile?.allergy_notes),
-    ...parseAllergens(profile?.intolerance_notes),
-    ...dietRules.inherentExcludedAllergens,
-  ]));
+  const normAllergies = normalizeAllergens(profile?.allergy_notes);
+  const normIntolerances = normalizeAllergens(profile?.intolerance_notes);
 
-  const mealType    = params.meal_type ?? inferMealType(hour);
+  const userAllergenCategories = Array.from(
+    new Set([...normAllergies.categories, ...normIntolerances.categories])
+  );
+  const userAllergenDbTokens = Array.from(
+    new Set([...normAllergies.dbTokens, ...normIntolerances.dbTokens])
+  );
+  const unknownAllergens = Array.from(
+    new Set([...normAllergies.unknownAllergens, ...normIntolerances.unknownAllergens])
+  );
 
-  // 2. Build MongoDB filter
-  const mongoFilter: Record<string, unknown> = { archived: { $ne: true } };
+  const mealType = params.meal_type ?? inferMealType(hour);
 
-  if (dietRules.allowedTags.length > 0) {
-    if (dietRules.disallowedTags.length > 0) {
-      mongoFilter.dietary_tags = {
-        $in: dietRules.allowedTags,
-        $nin: dietRules.disallowedTags,
-      };
-    } else {
-      mongoFilter.dietary_tags = { $in: dietRules.allowedTags };
-    }
-  }
-  if (allergens.length > 0) {
-    mongoFilter.allergens = { $nin: allergens };
-  }
-  if (mealType) {
-    mongoFilter.meal_type = mealType;
-  }
-  // ±20% calorie window around per-meal budget
-  const calLow  = budget * 0.80;
+  // 2. Build strict MongoDB filter
+  const calLow = budget * 0.80;
   const calHigh = budget * 1.20;
-  mongoFilter['nutrition_per_serving.calories'] = { $gte: calLow, $lte: calHigh };
 
-  // 3. Query MongoDB
+  const strictFilter = buildMongoFilter({
+    dietType,
+    userAllergenDbTokens,
+    unknownAllergens,
+    mealType,
+    calLow,
+    calHigh,
+  });
+
   const db = await getDb();
+  let isRelaxed = false;
+  let activeFilter = strictFilter;
+
   let docs = await db.collection('recipes')
-    .find(mongoFilter as Filter<Document>)
+    .find(strictFilter as Filter<Document>)
     .limit(20)
     .toArray();
 
-  // If strict filter returns nothing, relax calories
+  // 3. Calorie relaxation: If strict query yields 0 results, relax ONLY the calorie window.
+  // Safety guarantees: Dietary restrictions, allergen exclusions, archived flags, and meal types remain strictly active.
   if (docs.length === 0) {
-    const relaxedFilter: Record<string, unknown> = { ...mongoFilter };
-    delete relaxedFilter['nutrition_per_serving.calories'];
+    isRelaxed = true;
+    const relaxedFilter = buildMongoFilter({
+      dietType,
+      userAllergenDbTokens,
+      unknownAllergens,
+      mealType,
+    });
+    activeFilter = relaxedFilter;
+
     docs = await db.collection('recipes')
       .find(relaxedFilter as Filter<Document>)
       .limit(20)
@@ -198,33 +482,41 @@ export async function getRecommendations(
 
   const recipes = docs as unknown as RecipeDocument[];
 
-  // 4. Rank by proximity to calorie budget and protein density
+  // 4. Rank candidates by proximity to calorie budget and protein density
   const targetProtein = Number(goal?.target_protein_g ?? 50);
 
   const scored = recipes.map((r) => {
-    const cal    = r.nutrition_per_serving?.calories ?? 0;
-    const prot   = r.nutrition_per_serving?.protein_g ?? 0;
+    const cal = r.nutrition_per_serving?.calories ?? 0;
+    const prot = r.nutrition_per_serving?.protein_g ?? 0;
     const calDiff = Math.abs(cal - budget);
-    const protScore = prot / Math.max(1, cal) * 100;
-    const score  = 100 - calDiff / Math.max(1, budget) * 50 + protScore * 0.5;
+    const protScore = (prot / Math.max(1, cal)) * 100;
+    const score = 100 - (calDiff / Math.max(1, budget)) * 50 + protScore * 0.5;
 
-    const why = `Calories ${cal} kcal is ${calDiff.toFixed(0)} kcal from your per-meal budget of ${budget.toFixed(0)} kcal. ` +
+    let why = `Calories ${cal} kcal is ${calDiff.toFixed(0)} kcal from your per-meal budget of ${budget.toFixed(0)} kcal. ` +
       `Protein ${prot}g supports your daily target of ${targetProtein}g. ` +
       `Matches your ${dietType} diet.`;
+
+    if (isRelaxed) {
+      why = `[Calorie Window Relaxed] ` + why;
+    }
+    if (unknownAllergens.length > 0) {
+      why += ` (Note: Checked against unverified allergy note: "${unknownAllergens.join(', ')}")`;
+    }
 
     return {
       recipe: r,
       score: Math.round(score * 10) / 10,
       why,
-      mongoFilter,
+      mongoFilter: activeFilter,
       mysqlContext: {
-        goal_type:       goal?.goal_type ?? null,
+        goal_type: goal?.goal_type ?? null,
         target_calories: targetCal,
-        today_calories:  todayCal,
-        remaining_cal:   remaining,
+        today_calories: todayCal,
+        remaining_cal: remaining,
         budget_per_meal: Math.round(budget),
-        diet_type:       dietType,
-        allergens,
+        diet_type: dietType,
+        allergens: Array.from(new Set([...userAllergenCategories, ...unknownAllergens])),
+        unrecognized_allergens: unknownAllergens.length > 0 ? unknownAllergens : undefined,
       },
     } satisfies RecommendationResult;
   });
