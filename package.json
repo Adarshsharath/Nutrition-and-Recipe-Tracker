@@ -11,7 +11,8 @@
     "db:demo-queries": "tsx scripts/run-sql.ts sql/06_demo_queries.sql",
     "db:mongo": "tsx scripts/mongo-indexes.ts && tsx scripts/seed-recipes.ts",
     "seed": "tsx scripts/seed-demo.ts",
-    "test:triggers": "tsx scripts/test-triggers.ts"
+    "test:triggers": "tsx scripts/test-triggers.ts",
+    "test:sync": "tsx scripts/test-sync.ts"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.4",
