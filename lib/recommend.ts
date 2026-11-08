@@ -232,6 +232,49 @@ export function normalizeAllergens(text?: string | null): NormalizedAllergens {
   };
 }
 
+// ── TIME & DATE HANDLING ─────────────────────────────────────────────────────
+export function mealsRemainingToday(hour: number): number {
+  if (hour < 10) return 4; // breakfast, lunch, snack, dinner
+  if (hour < 14) return 3; // lunch, snack, dinner
+  if (hour < 18) return 2; // snack, dinner
+  return 1;                // dinner
+}
+
+export function inferMealType(hour: number): string {
+  if (hour < 10) return 'breakfast';
+  if (hour < 14) return 'lunch';
+  if (hour < 18) return 'snack';
+  return 'dinner';
+}
+
+/**
+ * Returns date and timing synchronized in local server timezone.
+ * Avoids mixing UTC date strings with local server hour.
+ */
+export function getRecommendationTiming(
+  referenceDate: Date = new Date(),
+  explicitDate?: string
+): { dateStr: string; hour: number; inferredMealType: string; mealsRemaining: number } {
+  const y = referenceDate.getFullYear();
+  const m = String(referenceDate.getMonth() + 1).padStart(2, '0');
+  const d = String(referenceDate.getDate()).padStart(2, '0');
+  const systemDate = `${y}-${m}-${d}`;
+  const systemHour = referenceDate.getHours();
+
+  const isToday = !explicitDate || explicitDate === systemDate;
+  const dateStr = explicitDate ?? systemDate;
+
+  const inferredMealType = isToday ? inferMealType(systemHour) : 'breakfast';
+  const mealsRemaining = isToday ? mealsRemainingToday(systemHour) : 4;
+
+  return {
+    dateStr,
+    hour: systemHour,
+    inferredMealType,
+    mealsRemaining,
+  };
+}
+
 // ── MONGODB FILTER BUILDER ───────────────────────────────────────────────────
 export function buildMongoFilter(options: {
   dietType: string;
@@ -350,23 +393,6 @@ export function isRecipeCompatible(
   };
 }
 
-// Meals remaining given current hour
-function mealsRemainingToday(hour: number): number {
-  if (hour < 9)  return 4; // breakfast/lunch/snack/dinner
-  if (hour < 12) return 3;
-  if (hour < 15) return 2;
-  if (hour < 19) return 1;
-  return 1;
-}
-
-// Infer meal_type from hour
-function inferMealType(hour: number): string {
-  if (hour < 10) return 'breakfast';
-  if (hour < 13) return 'lunch';
-  if (hour < 17) return 'snack';
-  return 'dinner';
-}
-
 export interface RecommendationResult {
   recipe: RecipeDocument;
   score: number;
@@ -384,12 +410,13 @@ export interface RecommendationResult {
   };
 }
 
+// ── HYBRID RECOMMENDATION ENGINE ─────────────────────────────────────────────
 export async function getRecommendations(
   userId: string,
   params: { meal_type?: string; date?: string }
 ): Promise<RecommendationResult[]> {
-  const today = params.date ?? new Date().toISOString().split('T')[0];
-  const hour = new Date().getHours();
+  const timing = getRecommendationTiming(new Date(), params.date);
+  const today = timing.dateStr;
 
   // 1. Fetch active goal + dietary profile from MySQL
   const [goalRows] = await pool.execute<RowDataPacket[]>(
@@ -420,7 +447,7 @@ export async function getRecommendations(
   const todayCal = Number(logRow?.total_calories ?? 0);
   const targetCal = Number(goal?.target_calories ?? 2000);
   const remaining = Math.max(0, targetCal - todayCal);
-  const mealsLeft = mealsRemainingToday(hour);
+  const mealsLeft = timing.mealsRemaining;
   const budget = Math.max(100, remaining / mealsLeft);
 
   const dietType = profile?.diet_type ?? 'other';
@@ -438,9 +465,9 @@ export async function getRecommendations(
     new Set([...normAllergies.unknownAllergens, ...normIntolerances.unknownAllergens])
   );
 
-  const mealType = params.meal_type ?? inferMealType(hour);
+  const mealType = params.meal_type ?? timing.inferredMealType;
 
-  // 2. Build strict MongoDB filter
+  // 2. Build strict MongoDB filter (with ±20% calorie window)
   const calLow = budget * 0.80;
   const calHigh = budget * 1.20;
 
@@ -471,6 +498,7 @@ export async function getRecommendations(
       userAllergenDbTokens,
       unknownAllergens,
       mealType,
+      // calLow and calHigh omitted
     });
     activeFilter = relaxedFilter;
 
