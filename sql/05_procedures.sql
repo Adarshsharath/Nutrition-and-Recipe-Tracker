@@ -47,20 +47,19 @@ BEGIN
 
   START TRANSACTION;
 
-  -- Find existing daily log
+  -- Concurrency-safe find-or-create for daily log:
+  -- Attempt insert with a new UUID. If a row for (user_id, log_date) already exists,
+  -- ON DUPLICATE KEY UPDATE avoids a duplicate key collision while preserving UNIQUE(user_id, log_date).
+  SET v_log_id = UUID();
+  INSERT INTO daily_nutrition_logs (log_id, user_id, log_date)
+  VALUES (v_log_id, p_user_id, p_log_date)
+  ON DUPLICATE KEY UPDATE log_id = log_id;
+
+  -- Retrieve the effective log_id (either newly inserted or existing)
   SELECT log_id INTO v_log_id
   FROM daily_nutrition_logs
   WHERE user_id = p_user_id AND log_date = p_log_date
   LIMIT 1;
-
-  -- Create daily log if it does not exist
-  IF v_log_id IS NULL THEN
-    SET v_log_id = UUID();
-    INSERT INTO daily_nutrition_logs
-      (log_id, user_id, log_date)
-    VALUES
-      (v_log_id, p_user_id, p_log_date);
-  END IF;
 
   -- Insert the meal log row; triggers will update daily totals
   SET v_meal_log_id = UUID();

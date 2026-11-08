@@ -106,8 +106,27 @@ db.recipes.createIndex({ "nutrition_per_serving.calories": 1 });
 ## 4. Quickstart: Setup & Execution Steps
 
 ### Prerequisites
-- Node.js 18+ and npm
-- Docker & Docker Compose (or local MySQL 8.0 and MongoDB 6+)
+- Node.js 20.9 or later and npm
+- Next.js 16.4.5
+- Docker & Docker Compose (or local MySQL 8.0 and MongoDB 7.0+)
+
+### Environment Configuration
+
+Copy the provided `.env.example` template to `.env.local`:
+```bash
+cp .env.example .env.local
+```
+
+| Environment Variable | Default Value | Description |
+| :--- | :--- | :--- |
+| `MYSQL_HOST` | `127.0.0.1` | MySQL server hostname |
+| `MYSQL_PORT` | `3306` | MySQL port (3306 standard) |
+| `MYSQL_USER` | `root` | MySQL user account |
+| `MYSQL_PASSWORD` | `rootpassword` | MySQL root password (Docker Compose default) |
+| `MYSQL_DATABASE` | `nutrition_tracker` | Relational database name |
+| `MONGODB_URI` | `mongodb://127.0.0.1:27017` | MongoDB connection URI |
+| `MONGODB_DB` | `nutrition_tracker` | Document database name |
+| `JWT_SECRET` | *(string >= 32 chars)* | Secret key for JWT session tokens |
 
 ### Method A: Docker Compose (Recommended)
 
@@ -126,6 +145,7 @@ db.recipes.createIndex({ "nutrition_per_serving.calories": 1 });
    ```bash
    npm run db:mysql
    ```
+   *Executes `01_schema.sql` through `05_procedures.sql` and `07_seed.sql` in numeric order with immediate error stopping. Safe to re-run idempotently.*
 
 4. **Create MongoDB indexes and seed the 25+ recipe collection:**
    ```bash
@@ -137,7 +157,13 @@ db.recipes.createIndex({ "nutrition_per_serving.calories": 1 });
    npm run seed
    ```
 
-6. **Start the Next.js development server:**
+6. **(Optional) Execute manual SQL demonstration queries:**
+   ```bash
+   npm run db:demo-queries
+   ```
+   *Executes `sql/06_demo_queries.sql` containing analytical queries and live procedure demonstrations.*
+
+7. **Start the Next.js development server:**
    ```bash
    npm run dev
    ```
@@ -145,30 +171,88 @@ db.recipes.createIndex({ "nutrition_per_serving.calories": 1 });
 
 ---
 
-### Method B: Plain Local Installation
+### Method B: Plain Local Installation (Running Natively Without Docker)
 
-If running MySQL and MongoDB natively on your machine:
-1. Ensure MySQL is running on port 3306 with credentials matching `.env.local`:
-   ```bash
-   MYSQL_HOST=localhost
-   MYSQL_PORT=3306
-   MYSQL_USER=root
-   MYSQL_PASSWORD=rootpassword
-   MYSQL_DATABASE=nutrition_tracker
-   ```
-2. Ensure MongoDB is running on port 27017:
-   ```bash
-   MONGODB_URI=mongodb://localhost:27017
-   MONGODB_DB=nutrition_tracker
-   ```
-3. Run the exact same sequence:
-   ```bash
-   npm install
-   npm run db:mysql
-   npm run db:mongo
-   npm run seed
-   npm run dev
-   ```
+If you have MySQL 8.0 and MongoDB 6+/7+ installed directly on your machine (e.g., via MySQL Community Server, XAMPP, or MongoDB Community Edition), follow these steps to run the project entirely locally:
+
+#### 1. Start your local database services
+
+- **Windows (PowerShell as Administrator or Services GUI):**
+  ```powershell
+  # Start MySQL service (name is usually MySQL80, MySQL, or via XAMPP control panel)
+  Start-Service -Name MySQL80
+
+  # Start MongoDB service (if installed as a Windows service)
+  Start-Service -Name MongoDB
+  ```
+  *(Alternatively, start MySQL through the XAMPP / WampServer control panel and start MongoDB via `mongod`)*
+
+- **macOS / Linux:**
+  ```bash
+  # Start MySQL
+  brew services start mysql        # macOS
+  sudo systemctl start mysql       # Linux (systemd)
+
+  # Start MongoDB
+  brew services start mongodb-community  # macOS
+  sudo systemctl start mongod            # Linux
+  ```
+
+#### 2. Create and configure `.env.local`
+
+Copy the environment template:
+```bash
+cp .env.example .env.local
+```
+
+Open `.env.local` and set your native MySQL root password and ports:
+```env
+# Point to your local MySQL instance
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=your_actual_mysql_root_password
+MYSQL_DATABASE=nutrition_tracker
+
+# Point to your local MongoDB instance
+MONGODB_URI=mongodb://127.0.0.1:27017
+MONGODB_DB=nutrition_tracker
+
+# Application secret
+JWT_SECRET=your-secure-jwt-secret-key-at-least-32-chars
+```
+
+#### 3. Install dependencies
+```bash
+npm install
+```
+
+#### 4. Run the local setup sequence
+
+Execute the setup scripts in order:
+
+```bash
+# A. Create MySQL database, tables, indexes, views, triggers, and procedures
+npm run db:mysql
+
+# B. Create MongoDB indexes and seed the 25+ recipe documents into both DBs
+npm run db:mongo
+
+# C. Seed 14 days of realistic meal logs and nutrition goals for demo users
+npm run seed
+
+# D. (Optional) Run the automated trigger test suite to verify all 7 triggers
+npm run test:triggers
+
+# E. (Optional) Execute manual SQL demonstration queries
+npm run db:demo-queries
+```
+
+#### 5. Start the web application
+```bash
+npm run dev
+```
+Open **[http://localhost:3000](http://localhost:3000)** in your browser. Access the faculty review console at **[http://localhost:3000/review](http://localhost:3000/review)**.
 
 ---
 
@@ -198,13 +282,16 @@ The application includes a dedicated **Review Console** at `/review` designed sp
 ### Step 2: Trigger Demonstration (Live Scenarios)
 1. Open the **"⚡ Triggers"** tab on `/review`.
 2. Inspect the installed triggers via `SHOW TRIGGERS`.
-3. For each of the 6 triggers, click **"▶ Run Live Demo"**:
-   - `trg_users_after_insert`: Inserts a user inside an isolated transaction and shows the auto-created `dietary_profiles` record.
-   - `trg_goals_before_insert`: Attempts to insert an overlapping goal for today and displays the actual MySQL `SIGNAL 45000` error: *"Goal date range overlaps an existing goal for this user."*
-   - `trg_meal_before_insert`: Marks a sample recipe as `is_active = FALSE` and attempts to log a meal against it, catching the custom `SIGNAL 45000` rejection.
-   - `trg_meal_after_insert`: Inserts a 350 kcal meal and shows before/after rows of `daily_nutrition_logs.total_calories` increasing automatically.
-   - `trg_meal_after_update`: Updates a meal's calories and shows daily totals adjusted accordingly.
-   - `trg_meal_after_delete`: Deletes a meal and proves daily totals decrement safely.
+3. For each of the 7 triggers, click **"▶ Run Live Demo"**:
+   - `trg_users_after_insert`: Inserts a user inside an isolated transaction and shows the auto-created `dietary_profiles` record with `diet_type = 'other'`.
+   - `trg_goals_before_insert`: Attempts to insert an overlapping goal and catches the MySQL `SIGNAL 45000` error: *"Goal date range overlaps an existing goal for this user."*
+   - `trg_goals_before_update`: Attempts to update a goal to overlap another and catches the MySQL `SIGNAL 45000` error: *"Updated goal date range overlaps an existing goal for this user."*
+   - `trg_meal_before_insert`: Attempts to log a meal against an inactive recipe (`is_active = FALSE`) and catches the `SIGNAL 45000` error: *"Cannot log meal: the referenced recipe is inactive/archived."*
+   - `trg_meal_after_insert`: Inserts a 350 kcal meal and verifies `daily_nutrition_logs.total_calories` increases automatically: **0 calories -> 350 calories**.
+   - `trg_meal_after_update`: Updates a meal's calories and verifies daily totals adjust: **500 calories -> 400 calories**.
+   - `trg_meal_after_delete`: Deletes a meal and verifies daily totals decrement safely: **600 calories -> 0 calories**.
+
+   *All trigger demos run in completely isolated transactions using temporary test accounts and roll back immediately, leaving the database unchanged.*
 
 ### Step 3: Dual-Write & Cross-Database Synchronization
 1. Open the **"🔄 Data Flow"** tab on `/review`.

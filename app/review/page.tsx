@@ -8,6 +8,7 @@ type Tab = 'tables' | 'triggers' | 'views' | 'mongodb' | 'dataflow' | 'queries';
 const TRIGGERS = [
   { name: 'trg_users_after_insert', description: 'AFTER INSERT on users → auto-creates dietary_profiles row with diet_type="other"' },
   { name: 'trg_goals_before_insert', description: 'BEFORE INSERT on nutrition_goals → SIGNAL 45000 if date range overlaps existing goal' },
+  { name: 'trg_goals_before_update', description: 'BEFORE UPDATE on nutrition_goals → SIGNAL 45000 if updated date range overlaps existing goal' },
   { name: 'trg_meal_before_insert', description: 'BEFORE INSERT on meal_logs → SIGNAL 45000 if referenced recipe has is_active = FALSE' },
   { name: 'trg_meal_after_insert', description: 'AFTER INSERT on meal_logs → increments total_calories/protein/carbs/fat on daily log' },
   { name: 'trg_meal_after_update', description: 'AFTER UPDATE on meal_logs → subtracts OLD and adds NEW nutrients on daily log' },
@@ -363,14 +364,13 @@ BEGIN
   END;
 
   START TRANSACTION;
+  SET v_log_id = UUID();
+  INSERT INTO daily_nutrition_logs (log_id, user_id, log_date)
+  VALUES (v_log_id, p_user_id, p_log_date)
+  ON DUPLICATE KEY UPDATE log_id = log_id;
+
   SELECT log_id INTO v_log_id FROM daily_nutrition_logs
   WHERE user_id = p_user_id AND log_date = p_log_date LIMIT 1;
-
-  IF v_log_id IS NULL THEN
-    SET v_log_id = UUID();
-    INSERT INTO daily_nutrition_logs (log_id, user_id, log_date)
-    VALUES (v_log_id, p_user_id, p_log_date);
-  END IF;
 
   SET v_meal_log_id = UUID();
   INSERT INTO meal_logs (meal_log_id, log_id, recipe_id, meal_type, servings,

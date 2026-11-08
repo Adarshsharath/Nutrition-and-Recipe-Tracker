@@ -27,7 +27,7 @@ const pool = mysql.createPool({
   host:     process.env.MYSQL_HOST     ?? 'localhost',
   port:     Number(process.env.MYSQL_PORT ?? 3306),
   user:     process.env.MYSQL_USER     ?? 'root',
-  password: process.env.MYSQL_PASSWORD ?? '123456',
+  password: process.env.MYSQL_PASSWORD ?? 'rootpassword',
   database: process.env.MYSQL_DATABASE ?? 'nutrition_tracker',
   waitForConnections: true,
   connectionLimit: 10,

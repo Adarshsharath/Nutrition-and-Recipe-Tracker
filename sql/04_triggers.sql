@@ -43,6 +43,7 @@ BEGIN
   SELECT COUNT(*) INTO overlap_count
   FROM nutrition_goals
   WHERE user_id = NEW.user_id
+    AND goal_id <> NEW.goal_id
     AND NEW.start_date <= COALESCE(end_date, '9999-12-31')
     AND COALESCE(NEW.end_date, '9999-12-31') >= start_date;
 
