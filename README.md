@@ -244,7 +244,13 @@ npm run seed
 # D. (Optional) Run the automated trigger test suite to verify all 7 triggers
 npm run test:triggers
 
-# E. (Optional) Execute manual SQL demonstration queries
+# E. (Optional) Run the cross-database sync verification test suite
+npm run test:sync
+
+# F. (Optional) Run the recommendation filtering and allergen test suite
+npm run test:recommendations
+
+# G. (Optional) Execute manual SQL demonstration queries
 npm run db:demo-queries
 ```
 
@@ -319,6 +325,37 @@ The application includes a dedicated **Review Console** at `/review` designed sp
    - **Calculations:** Derives per-meal budget (`remaining / meals_remaining`) and defines a ±20% calorie window.
    - **MongoDB Filter:** Shows the executed JSON query using `$nin` for allergen exclusion and `$in` for allowed dietary tags.
    - **Ranking:** Scores results based on calorie budget proximity and protein density.
+
+#### Recommendation Engine Filtering Rules:
+- **Dietary Compatibility Hierarchy:**
+  - `vegan`: strictly plant-based; rejects egg, dairy/milk, seafood, poultry, meat (`allowedTags: ['vegan']`, `disallowedTags: ['eggetarian', 'pescatarian', 'non_vegetarian']`).
+  - `vegetarian`: allows plant-based and dairy; rejects eggs, fish, seafood, poultry, meat (`allowedTags: ['vegetarian', 'vegan']`, `disallowedTags: ['eggetarian', 'pescatarian', 'non_vegetarian']`).
+  - `eggetarian`: allows plant-based, dairy, and eggs; rejects fish, seafood, poultry, meat (`allowedTags: ['vegetarian', 'vegan', 'eggetarian']`, `disallowedTags: ['pescatarian', 'non_vegetarian']`).
+  - `pescatarian`: allows plant-based, dairy, eggs, fish, and seafood; rejects poultry and meat (`allowedTags: ['vegetarian', 'vegan', 'eggetarian', 'pescatarian']`, `disallowedTags: ['non_vegetarian']`).
+  - `non_vegetarian` & `other`: unrestricted by dietary category.
+- **Canonical Allergen Vocabulary:**
+  - Supports 10 canonical categories with word-boundary matching and alias normalization:
+    - **Milk / Dairy:** `milk`, `dairy`, `lactose`, `cheese`, `butter`, `paneer`, `curd`, `yogurt`, `cream`, `ghee`, `whey`, `casein`
+    - **Egg:** `egg`, `eggs`, `egg-white`, `egg-yolk`, `albumen`, `mayonnaise`
+    - **Gluten / Wheat:** `gluten`, `wheat`, `barley`, `rye`, `flour`, `maida`, `atta`, `semolina`, `sooji`, `oats`
+    - **Peanut:** `peanut`, `peanuts`, `groundnut`, `groundnuts`, `arachis`
+    - **Tree Nuts:** `tree nut`, `almond`, `cashew`, `walnut`, `pistachio`, `hazelnut`, `pecan`
+    - **Soy:** `soy`, `soya`, `soybean`, `tofu`, `edamame`, `tempeh`, `miso`
+    - **Fish:** `fish`, `salmon`, `tuna`, `cod`, `tilapia`, `trout`, `anchovy`, `sardine`, `mackerel`
+    - **Shellfish:** `shellfish`, `prawn`, `shrimp`, `crab`, `lobster`, `clam`, `oyster`, `mussel`, `scallop`
+    - **Sesame:** `sesame`, `tahini`, `til`, `gingelly`
+    - **Mustard:** `mustard`, `dijon`, `sarson`
+  - Unrecognized terms (e.g., "kiwi", "sulfites") are conservatively flagged and checked against recipe titles and ingredient lists.
+- **Calorie Relaxation Safety Invariant:**
+  - If a user's strict ±20% calorie window yields zero recipes, the engine relaxes **only** the calorie boundary condition (`nutrition_per_serving.calories`).
+  - All safety filters—including dietary tag `$in`/`$nin`, allergen `$nin`, archived exclusion (`archived: { $ne: true }`), and meal-type—remain strictly enforced. Safety exclusions are never relaxed.
+- **Timezone & Meal Timing Policy:**
+  - System date formatting (`YYYY-MM-DD`) and hour evaluation (`0-23`) use the local server timezone in lockstep to avoid UTC-date / local-hour divergence across midnight.
+  - Explicit date parameters (`?date=YYYY-MM-DD`) are preserved and validated.
+- **Run the Recommendation Test Suite:**
+  ```bash
+  npm run test:recommendations
+  ```
 
 ### Step 6: Analytical Queries
 1. Open the **"📊 Queries"** tab on `/review`.
