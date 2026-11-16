@@ -3,6 +3,33 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
+interface FieldProps {
+  label: string;
+  name: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  type?: string;
+  placeholder?: string;
+  required?: boolean;
+}
+
+function Field({ label, name, value, onChange, type = 'text', placeholder = '', required = false }: FieldProps) {
+  return (
+    <div>
+      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">{label}</label>
+      <input
+        type={type}
+        required={required}
+        name={name}
+        value={value}
+        placeholder={placeholder}
+        onChange={onChange}
+        className="w-full rounded-xl px-3.5 py-2.5 text-sm glass-input font-medium text-slate-800 placeholder-slate-400"
+      />
+    </div>
+  );
+}
+
 export default function RegisterPage() {
   const router = useRouter();
   const [form, setForm] = useState({
@@ -16,6 +43,10 @@ export default function RegisterPage() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -42,20 +73,6 @@ export default function RegisterPage() {
     }
   }
 
-  const Field = ({ label, name, type = 'text', placeholder = '', required = false }: { label: string; name: string; type?: string; placeholder?: string; required?: boolean }) => (
-    <div>
-      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">{label}</label>
-      <input
-        type={type}
-        required={required}
-        value={(form as Record<string,string>)[name]}
-        placeholder={placeholder}
-        onChange={(e) => setForm({ ...form, [name]: e.target.value })}
-        className="w-full rounded-xl px-3.5 py-2.5 text-sm glass-input font-medium text-slate-800 placeholder-slate-400"
-      />
-    </div>
-  );
-
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-8rem)] px-4 py-12">
       <div className="w-full max-w-lg glass-panel p-8 sm:p-10 rounded-3xl relative overflow-hidden shadow-2xl">
@@ -79,14 +96,14 @@ export default function RegisterPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Field label="Full Name *" name="full_name" placeholder="Adarsh Prakash" required />
-          <Field label="Email Address *" name="email" type="email" placeholder="you@pes.edu" required />
-          <Field label="Password *" name="password" type="password" placeholder="Min 8 characters" required />
-          <Field label="Date of Birth" name="date_of_birth" type="date" />
+          <Field label="Full Name *" name="full_name" value={form.full_name} onChange={handleChange} placeholder="Adarsh Prakash" required />
+          <Field label="Email Address *" name="email" value={form.email} onChange={handleChange} type="email" placeholder="you@pes.edu" required />
+          <Field label="Password *" name="password" value={form.password} onChange={handleChange} type="password" placeholder="Min 8 characters" required />
+          <Field label="Date of Birth" name="date_of_birth" value={form.date_of_birth} onChange={handleChange} type="date" />
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Height (cm)" name="height_cm" type="number" placeholder="175" />
-            <Field label="Weight (kg)" name="weight_kg" type="number" placeholder="70" />
+            <Field label="Height (cm)" name="height_cm" value={form.height_cm} onChange={handleChange} type="number" placeholder="175" />
+            <Field label="Weight (kg)" name="weight_kg" value={form.weight_kg} onChange={handleChange} type="number" placeholder="70" />
           </div>
 
           <div>

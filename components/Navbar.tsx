@@ -11,7 +11,7 @@ const links = [
   { href: '/recommendations', label: 'Suggestions', icon: '✨' },
   { href: '/profile',   label: 'Profile',   icon: '👤' },
   { href: '/about',     label: 'About',     icon: 'ℹ' },
-  { href: '/review',    label: 'Review Console', icon: '🔬', badge: 'Demo' },
+  { href: '/review',    label: 'Review Console', icon: '🔬' },
 ];
 
 export default function Navbar() {
@@ -39,7 +39,7 @@ export default function Navbar() {
                 NutriTrack
               </span>
               <span className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase -mt-0.5">
-                DBMS Project
+                Personalized Nutrition
               </span>
             </div>
           </Link>
@@ -52,6 +52,7 @@ export default function Navbar() {
                 <Link
                   key={l.href}
                   href={l.href}
+                  prefetch={true}
                   className={`relative px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
                     active
                       ? 'bg-emerald-600/10 text-emerald-800 shadow-sm border border-emerald-500/30'
@@ -60,11 +61,6 @@ export default function Navbar() {
                 >
                   <span className="text-xs">{l.icon}</span>
                   <span>{l.label}</span>
-                  {l.badge && (
-                    <span className="ml-0.5 text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-purple-600/15 text-purple-700 border border-purple-300">
-                      {l.badge}
-                    </span>
-                  )}
                 </Link>
               );
             })}
@@ -100,6 +96,7 @@ export default function Navbar() {
               <Link
                 key={l.href}
                 href={l.href}
+                prefetch={true}
                 onClick={() => setOpen(false)}
                 className={`px-3 py-2 rounded-xl text-sm font-semibold flex items-center justify-between ${
                   pathname.startsWith(l.href)
@@ -111,11 +108,6 @@ export default function Navbar() {
                   <span>{l.icon}</span>
                   <span>{l.label}</span>
                 </span>
-                {l.badge && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                    {l.badge}
-                  </span>
-                )}
               </Link>
             ))}
             <button

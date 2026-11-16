@@ -198,10 +198,10 @@ export default function AboutPage() {
               {[
                 ['users', 'Account credentials, body baseline metrics, activity level', 'user_id CHAR(36) PK; email UNIQUE; password_hash bcrypt (never plaintext); CHECK height/weight > 0; CHECK activity_level in enum'],
                 ['dietary_profiles', 'Current dietary preference and allergy notes', 'profile_id CHAR(36) PK; user_id UNIQUE FK (CASCADE); CHECK diet_type in enum; auto-created by trg_users_after_insert'],
-                ['nutrition_goals', 'Historical and active nutrition targets', 'goal_id CHAR(36) PK; user_id FK (CASCADE); targets >= 0; end_date >= start_date; overlap prevented by trigger'],
+                ['nutrition_goals', 'Historical and active nutrition targets', 'goal_id CHAR(36) PK; user_id FK (CASCADE); targets >= 0; end_date >= start_date; overlap prevented by trg_goals_before_insert & trg_goals_before_update'],
                 ['recipe_catalog', 'Stable relational anchor for recipes', 'recipe_id CHAR(36) PK; recipe_name NOT NULL; is_active soft delete flag; referenced by meal_logs (SET NULL)'],
-                ['daily_nutrition_logs', 'Daily aggregates per user per date', 'log_id CHAR(36) PK; user_id FK (CASCADE); UNIQUE(user_id, log_date); CHECK totals >= 0; maintained by triggers only'],
-                ['meal_logs', 'Individual meal entries with nutrient snapshot', 'meal_log_id CHAR(36) PK; log_id FK (CASCADE); recipe_id FK (SET NULL); servings > 0; nutrients >= 0; meal_type enum'],
+                ['daily_nutrition_logs', 'Daily aggregates per user per date', 'log_id CHAR(36) PK; user_id FK (CASCADE); UNIQUE(user_id, log_date); CHECK totals >= 0; maintained by triggers (trg_meal_after_insert/update/delete)'],
+                ['meal_logs', 'Individual meal entries with nutrient snapshot', 'meal_log_id CHAR(36) PK; log_id FK (CASCADE); recipe_id FK (SET NULL); servings > 0; nutrients >= 0; inactive recipe blocked by trg_meal_before_insert; meal_type enum'],
               ].map(([t, p, c], i) => (
                 <tr key={i} className="hover:bg-white/60 transition-colors">
                   <td className="p-3.5 font-mono text-blue-700 font-bold whitespace-nowrap">{t}</td>

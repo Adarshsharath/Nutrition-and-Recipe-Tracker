@@ -25,14 +25,23 @@ export default function RecipesPage() {
     setLoading(false);
   }
 
-  useEffect(() => { search(); }, []);
-
   function handleTagClick(t: string) {
     setFilters((prev) => ({ ...prev, tag: prev.tag === t ? '' : t }));
   }
 
   useEffect(() => {
-    search();
+    let ignore = false;
+    const params = new URLSearchParams();
+    if (filters.tag) params.set('tag', filters.tag);
+    if (filters.meal_type) params.set('meal_type', filters.meal_type);
+    fetch(`/api/recipes?${params}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!ignore) setRecipes(data);
+      });
+    return () => {
+      ignore = true;
+    };
   }, [filters.tag, filters.meal_type]);
 
   return (
@@ -59,7 +68,7 @@ export default function RecipesPage() {
           href="/recipes/new"
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30 hover:scale-105 transition-all"
         >
-          <span>+</span> Create Dual-Write Recipe
+          <span>+</span> Add New Recipe
         </Link>
       </div>
 
@@ -172,7 +181,7 @@ export default function RecipesPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {recipes.map((r) => (
-            <RecipeCard key={r._id as string} recipe={r as any} />
+            <RecipeCard key={r._id as string} recipe={r as unknown as Parameters<typeof RecipeCard>[0]['recipe']} />
           ))}
         </div>
       )}

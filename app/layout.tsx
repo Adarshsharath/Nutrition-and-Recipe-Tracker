@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import Navbar from '@/components/Navbar';
-import { Toaster } from '@/components/Toaster';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -24,7 +23,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Navbar />
           <main className="flex-1 pb-16">{children}</main>
         </div>
-        <Toaster />
       </body>
     </html>
   );

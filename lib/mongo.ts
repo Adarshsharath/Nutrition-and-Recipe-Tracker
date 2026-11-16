@@ -4,7 +4,6 @@ const uri  = process.env.MONGODB_URI ?? 'mongodb://localhost:27017';
 const dbName = process.env.MONGODB_DB ?? 'nutrition_tracker';
 
 declare global {
-  // eslint-disable-next-line no-var
   var _mongoClient: MongoClient | undefined;
 }
 

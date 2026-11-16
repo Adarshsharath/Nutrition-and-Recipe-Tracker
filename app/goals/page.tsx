@@ -32,11 +32,22 @@ export default function GoalsPage() {
 
   const today = new Date().toISOString().split('T')[0];
 
-  async function fetchGoals() {
+  async function refreshGoals() {
     const res = await fetch('/api/goals');
     if (res.ok) setGoals(await res.json());
   }
-  useEffect(() => { fetchGoals(); }, []);
+
+  useEffect(() => {
+    let ignore = false;
+    fetch('/api/goals')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!ignore) setGoals(data);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   function isActive(g: Goal) {
     return g.start_date <= today && (!g.end_date || g.end_date >= today);
@@ -58,7 +69,7 @@ export default function GoalsPage() {
     if (res.ok) {
       setForm(emptyForm);
       setEditing(null);
-      fetchGoals();
+      refreshGoals();
     } else {
       const data = await res.json();
       setError(data.error ?? 'Failed to save goal');
@@ -68,7 +79,7 @@ export default function GoalsPage() {
   async function deleteGoal(id: string) {
     if (!confirm('Are you sure you want to delete this nutrition goal?')) return;
     await fetch(`/api/goals/${id}`, { method: 'DELETE' });
-    fetchGoals();
+    refreshGoals();
   }
 
   function startEdit(g: Goal) {
@@ -100,7 +111,7 @@ export default function GoalsPage() {
             🎯 Nutrition & Macro Goals
           </h1>
           <p className="text-sm text-slate-600 mt-1">
-            Set custom caloric and macronutrient targets guarded by `trg_nutrition_goals_overlap_check` to prevent overlapping active periods.
+            Set custom caloric and macronutrient targets guarded by MySQL triggers <code className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded font-mono">trg_goals_before_insert</code> and <code className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded font-mono">trg_goals_before_update</code> to prevent overlapping active periods.
           </p>
         </div>
         <Link

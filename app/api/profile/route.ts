@@ -25,7 +25,7 @@ export async function PUT(req: NextRequest) {
     const data = ProfileUpdateSchema.parse(body);
 
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: (string | number | null)[] = [];
     if (data.full_name !== undefined)      { fields.push('full_name = ?');      values.push(data.full_name); }
     if (data.date_of_birth !== undefined)  { fields.push('date_of_birth = ?');  values.push(data.date_of_birth ?? null); }
     if (data.height_cm !== undefined)      { fields.push('height_cm = ?');      values.push(data.height_cm ?? null); }

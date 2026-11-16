@@ -1,6 +1,5 @@
 'use client';
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 
 interface Meal {
   meal_log_id: string;
@@ -47,7 +46,7 @@ export default function LogPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  async function fetchLog() {
+  async function refreshLog() {
     const res = await fetch(`/api/logs?date=${date}`);
     if (res.ok) {
       const data = await res.json();
@@ -56,15 +55,38 @@ export default function LogPage() {
     }
   }
 
-  useEffect(() => { fetchLog(); }, [date]);
+  useEffect(() => {
+    let ignore = false;
+    fetch(`/api/logs?date=${date}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!ignore && data) {
+          setLog(data.log);
+          setMeals(data.meals ?? []);
+        }
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [date]);
 
   useEffect(() => {
-    if (search.length < 2) { setRecipes([]); return; }
-    const timer = setTimeout(async () => {
-      const res = await fetch(`/api/recipes?q=${encodeURIComponent(search)}&limit=8`);
-      if (res.ok) setRecipes(await res.json());
+    let ignore = false;
+    const timer = setTimeout(() => {
+      if (search.length < 2) {
+        if (!ignore) setRecipes([]);
+        return;
+      }
+      fetch(`/api/recipes?q=${encodeURIComponent(search)}&limit=8`)
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => {
+          if (!ignore) setRecipes(data);
+        });
     }, 250);
-    return () => clearTimeout(timer);
+    return () => {
+      ignore = true;
+      clearTimeout(timer);
+    };
   }, [search]);
 
   function selectRecipe(r: typeof recipes[0]) {
@@ -103,7 +125,7 @@ export default function LogPage() {
         notes: '',
       });
       setSearch('');
-      fetchLog();
+      refreshLog();
     } else {
       const data = await res.json();
       setError(data.error ?? 'Failed to log meal');
@@ -113,7 +135,7 @@ export default function LogPage() {
   async function deleteMeal(id: string) {
     if (!confirm('Delete this meal entry? MySQL triggers will automatically recalculate daily totals.')) return;
     await fetch(`/api/meals/${id}`, { method: 'DELETE' });
-    fetchLog();
+    refreshLog();
   }
 
   return (
@@ -332,7 +354,7 @@ export default function LogPage() {
               </div>
 
               <p className="text-[11px] text-slate-500 mt-4 pt-2 border-t border-slate-100 flex items-center justify-between">
-                <span>Triggers: `trg_meal_after_insert` & `trg_meal_after_delete`</span>
+                <span>DB Triggers: <code className="font-mono text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded">trg_meal_after_insert</code> / <code className="font-mono text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded">update</code> / <code className="font-mono text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded">delete</code></span>
                 <span className="font-semibold text-blue-600">💧 {log.water_ml ?? 0} ml</span>
               </p>
             </div>

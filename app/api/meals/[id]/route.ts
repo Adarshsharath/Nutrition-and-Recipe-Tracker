@@ -24,7 +24,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: (string | number | null)[] = [];
     if (data.meal_type !== undefined) { fields.push('meal_type = ?'); values.push(data.meal_type); }
     if (data.servings  !== undefined) { fields.push('servings = ?');  values.push(data.servings); }
     if (data.calories  !== undefined) { fields.push('calories = ?');  values.push(data.calories); }

@@ -163,7 +163,7 @@ export default function DashboardClient({ fullName, todayLog, activeGoal, chartD
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                   <span>📊</span> Today&apos;s Macronutrient Goals
                 </h2>
-                <p className="text-xs text-slate-500">Calculated directly via MySQL Trigger `trg_meal_logs_after_insert`</p>
+                <p className="text-xs text-slate-500">Maintained automatically via MySQL Trigger <code className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded font-mono">trg_meal_after_insert</code></p>
               </div>
               {activeGoal ? (
                 <span className="text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full flex items-center gap-1.5">
