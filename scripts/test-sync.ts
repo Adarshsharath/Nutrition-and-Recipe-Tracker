@@ -366,7 +366,7 @@ async function runTests() {
 
     // Check final counts and consistency
     const finalAudit = await syncCheck();
-    assert(finalAudit.totalChecked === 25, `Total recipes checked equals 25 (found ${finalAudit.totalChecked})`);
+    assert(finalAudit.totalChecked === 30, `Total recipes checked equals 30 (found ${finalAudit.totalChecked})`);
     assert(finalAudit.isConsistent, 'Both databases are completely consistent and clean at completion');
 
     console.log('\n====================================================');

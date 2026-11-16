@@ -93,7 +93,7 @@ export default function LoginPage() {
         {/* Quick Demo Logins */}
         <div className="mt-6 pt-6 border-t border-slate-200/60">
           <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 text-center mb-2.5">
-            Quick One-Click Demo Profiles
+            Test Accounts (One-Click Fill)
           </p>
           <div className="grid grid-cols-3 gap-2 text-[11px]">
             <button

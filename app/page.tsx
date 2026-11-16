@@ -39,19 +39,19 @@ export default async function HomePage() {
             href="/login"
             className="px-7 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-600/25 hover:shadow-emerald-600/40 hover:scale-[1.02] active:scale-[0.98] transition-all"
           >
-            Sign In with Demo Account
+            Sign In
           </Link>
           <Link
             href="/register"
             className="px-7 py-3.5 rounded-2xl glass-panel text-slate-800 font-bold text-sm hover:bg-white/90 hover:scale-[1.02] active:scale-[0.98] transition-all"
           >
-            Create New Profile
+            Create Account
           </Link>
           <Link
             href="/review"
             className="px-7 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-sm shadow-lg shadow-purple-600/20 hover:shadow-purple-600/35 hover:scale-[1.02] active:scale-[0.98] transition-all"
           >
-            🔬 Open Review-1 Console
+            🔬 DBMS Evaluation Console
           </Link>
         </div>
 

@@ -2,15 +2,66 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
+interface ProfileData {
+  full_name?: string;
+  email?: string;
+  date_of_birth?: string | null;
+  height_cm?: number | string | null;
+  weight_kg?: number | string | null;
+  activity_level?: string;
+}
+
+interface DietaryData {
+  diet_type?: string;
+  allergy_notes?: string | null;
+  intolerance_notes?: string | null;
+}
+
+const defaultProfile: ProfileData = {
+  full_name: '',
+  email: '',
+  date_of_birth: '',
+  height_cm: '',
+  weight_kg: '',
+  activity_level: 'moderate',
+};
+
+const defaultDietary: DietaryData = {
+  diet_type: 'other',
+  allergy_notes: '',
+  intolerance_notes: '',
+};
+
 export default function ProfilePage() {
-  const [profile, setProfile] = useState<Record<string, unknown>>({});
-  const [dietary, setDietary] = useState<Record<string, unknown>>({});
+  const [profile, setProfile] = useState<ProfileData>(defaultProfile);
+  const [dietary, setDietary] = useState<DietaryData>(defaultDietary);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [saved, setSaved] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch('/api/profile').then((r) => r.json()).then(setProfile);
-    fetch('/api/dietary-profile').then((r) => r.json()).then(setDietary);
+    let ignore = false;
+    Promise.all([
+      fetch('/api/profile').then((r) => (r.ok ? r.json() : null)),
+      fetch('/api/dietary-profile').then((r) => (r.ok ? r.json() : null)),
+    ])
+      .then(([pData, dData]) => {
+        if (ignore) return;
+        if (pData && typeof pData === 'object' && !('error' in pData)) {
+          setProfile((prev) => ({ ...prev, ...pData }));
+        }
+        if (dData && typeof dData === 'object' && !('error' in dData)) {
+          setDietary((prev) => ({ ...prev, ...dData }));
+        }
+        setInitialLoading(false);
+      })
+      .catch(() => {
+        if (!ignore) setInitialLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   async function saveProfile(e: React.FormEvent) {
@@ -20,11 +71,11 @@ export default function ProfilePage() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        full_name:      profile.full_name,
-        date_of_birth:  profile.date_of_birth ?? null,
-        height_cm:      profile.height_cm ? Number(profile.height_cm) : null,
-        weight_kg:      profile.weight_kg ? Number(profile.weight_kg) : null,
-        activity_level: profile.activity_level,
+        full_name:      profile?.full_name ?? '',
+        date_of_birth:  profile?.date_of_birth ? String(profile.date_of_birth).split('T')[0] : null,
+        height_cm:      profile?.height_cm ? Number(profile.height_cm) : null,
+        weight_kg:      profile?.weight_kg ? Number(profile.weight_kg) : null,
+        activity_level: profile?.activity_level ?? 'moderate',
       }),
     });
     setLoading(false);
@@ -38,7 +89,11 @@ export default function ProfilePage() {
     const res = await fetch('/api/dietary-profile', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(dietary),
+      body: JSON.stringify({
+        diet_type:         dietary?.diet_type ?? 'other',
+        allergy_notes:     dietary?.allergy_notes || null,
+        intolerance_notes: dietary?.intolerance_notes || null,
+      }),
     });
     setLoading(false);
     setSaved(res.ok ? 'Dietary profile & allergy exclusions updated!' : 'Error updating dietary profile');
@@ -79,180 +134,196 @@ export default function ProfilePage() {
         </div>
       )}
 
-      <div className="grid md:grid-cols-2 gap-8 items-start">
-        {/* Personal Metrics Form */}
-        <div className="glass-panel rounded-3xl p-6 border border-white/60 space-y-4">
-          <div className="pb-3 border-b border-slate-100">
-            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <span>⚖️</span> Personal Body Metrics
-            </h2>
-            <p className="text-xs text-slate-500">Stored in MySQL `users` table</p>
+      {initialLoading ? (
+        <div className="grid md:grid-cols-2 gap-8 items-start animate-pulse">
+          <div className="glass-panel rounded-3xl p-6 border border-white/60 space-y-4">
+            <div className="h-6 bg-slate-200 rounded-lg w-1/3 mb-2" />
+            <div className="h-10 bg-slate-100 rounded-2xl w-full" />
+            <div className="h-10 bg-slate-100 rounded-2xl w-full" />
+            <div className="h-10 bg-slate-100 rounded-2xl w-full" />
           </div>
-
-          <form onSubmit={saveProfile} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-                Full Name
-              </label>
-              <input
-                type="text"
-                required
-                value={String(profile.full_name ?? '')}
-                onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
-                className="w-full glass-input rounded-2xl px-4 py-2.5 text-sm text-slate-900 border"
-              />
+          <div className="glass-panel rounded-3xl p-6 border border-white/60 space-y-4">
+            <div className="h-6 bg-slate-200 rounded-lg w-1/3 mb-2" />
+            <div className="h-10 bg-slate-100 rounded-2xl w-full" />
+            <div className="h-20 bg-slate-100 rounded-2xl w-full" />
+          </div>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-8 items-start">
+          {/* Personal Metrics Form */}
+          <div className="glass-panel rounded-3xl p-6 border border-white/60 space-y-4">
+            <div className="pb-3 border-b border-slate-100">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <span>⚖️</span> Personal Body Metrics
+              </h2>
+              <p className="text-xs text-slate-500">Stored in MySQL `users` table</p>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-                Email Address <span className="text-slate-400 font-normal">(Primary Key / Unique)</span>
-              </label>
-              <input
-                type="email"
-                disabled
-                value={String(profile.email ?? '')}
-                className="w-full rounded-2xl px-4 py-2.5 text-sm text-slate-400 bg-slate-100/80 border border-slate-200 cursor-not-allowed font-mono text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-                Date of Birth
-              </label>
-              <input
-                type="date"
-                value={String(profile.date_of_birth ?? '').split('T')[0]}
-                onChange={(e) => setProfile({ ...profile, date_of_birth: e.target.value })}
-                className="w-full glass-input rounded-2xl px-4 py-2 text-sm text-slate-900 border"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={saveProfile} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-                  Height (cm)
+                  Full Name
                 </label>
                 <input
-                  type="number"
-                  step="0.1"
-                  min="50"
-                  max="300"
-                  value={String(profile.height_cm ?? '')}
-                  onChange={(e) => setProfile({ ...profile, height_cm: e.target.value })}
-                  className="w-full glass-input rounded-2xl px-4 py-2 text-sm text-slate-900 border"
+                  type="text"
+                  required
+                  value={String(profile?.full_name ?? '')}
+                  onChange={(e) => setProfile((prev) => ({ ...(prev || {}), full_name: e.target.value }))}
+                  className="w-full glass-input rounded-2xl px-4 py-2.5 text-sm text-slate-900 border"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-                  Weight (kg)
+                  Email Address <span className="text-slate-400 font-normal">(Primary Key / Unique)</span>
                 </label>
                 <input
-                  type="number"
-                  step="0.1"
-                  min="20"
-                  max="500"
-                  value={String(profile.weight_kg ?? '')}
-                  onChange={(e) => setProfile({ ...profile, weight_kg: e.target.value })}
+                  type="email"
+                  disabled
+                  value={String(profile?.email ?? '')}
+                  className="w-full rounded-2xl px-4 py-2.5 text-sm text-slate-400 bg-slate-100/80 border border-slate-200 cursor-not-allowed font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Date of Birth
+                </label>
+                <input
+                  type="date"
+                  value={profile?.date_of_birth ? String(profile.date_of_birth).split('T')[0] : ''}
+                  onChange={(e) => setProfile((prev) => ({ ...(prev || {}), date_of_birth: e.target.value }))}
                   className="w-full glass-input rounded-2xl px-4 py-2 text-sm text-slate-900 border"
                 />
               </div>
-            </div>
 
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-                Activity Level
-              </label>
-              <select
-                value={String(profile.activity_level ?? 'moderate')}
-                onChange={(e) => setProfile({ ...profile, activity_level: e.target.value })}
-                className="w-full glass-input rounded-2xl px-4 py-2.5 text-sm text-slate-900 border capitalize"
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Height (cm)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="50"
+                    max="300"
+                    value={profile?.height_cm != null ? String(profile.height_cm) : ''}
+                    onChange={(e) => setProfile((prev) => ({ ...(prev || {}), height_cm: e.target.value }))}
+                    className="w-full glass-input rounded-2xl px-4 py-2 text-sm text-slate-900 border"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Weight (kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="20"
+                    max="500"
+                    value={profile?.weight_kg != null ? String(profile.weight_kg) : ''}
+                    onChange={(e) => setProfile((prev) => ({ ...(prev || {}), weight_kg: e.target.value }))}
+                    className="w-full glass-input rounded-2xl px-4 py-2 text-sm text-slate-900 border"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Activity Level
+                </label>
+                <select
+                  value={String(profile?.activity_level ?? 'moderate')}
+                  onChange={(e) => setProfile((prev) => ({ ...(prev || {}), activity_level: e.target.value }))}
+                  className="w-full glass-input rounded-2xl px-4 py-2.5 text-sm text-slate-900 border capitalize"
+                >
+                  <option value="sedentary">Sedentary (Little to no exercise)</option>
+                  <option value="light">Light (Exercise 1-3 days/week)</option>
+                  <option value="moderate">Moderate (Exercise 3-5 days/week)</option>
+                  <option value="active">Active (Exercise 6-7 days/week)</option>
+                  <option value="very_active">Very Active (Hard exercise daily)</option>
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30 hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 mt-2"
               >
-                <option value="sedentary">Sedentary (Little to no exercise)</option>
-                <option value="light">Light (Exercise 1-3 days/week)</option>
-                <option value="moderate">Moderate (Exercise 3-5 days/week)</option>
-                <option value="active">Active (Exercise 6-7 days/week)</option>
-                <option value="very_active">Very Active (Hard exercise daily)</option>
-              </select>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30 hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 mt-2"
-            >
-              {loading ? 'Saving...' : '💾 Update Personal Metrics'}
-            </button>
-          </form>
-        </div>
-
-        {/* Dietary Preferences Form */}
-        <div className="glass-panel rounded-3xl p-6 border border-white/60 space-y-4">
-          <div className="pb-3 border-b border-slate-100">
-            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <span>🥗</span> Dietary Profile &amp; Exclusions
-            </h2>
-            <p className="text-xs text-slate-500">Stored in MySQL `dietary_profiles` (auto-created by trigger)</p>
+                {loading ? 'Saving...' : '💾 Update Personal Metrics'}
+              </button>
+            </form>
           </div>
 
-          <form onSubmit={saveDietary} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-                Diet Classification
-              </label>
-              <select
-                value={String(dietary.diet_type ?? 'other')}
-                onChange={(e) => setDietary({ ...dietary, diet_type: e.target.value })}
-                className="w-full glass-input rounded-2xl px-4 py-2.5 text-sm text-slate-900 border capitalize"
+          {/* Dietary Preferences Form */}
+          <div className="glass-panel rounded-3xl p-6 border border-white/60 space-y-4">
+            <div className="pb-3 border-b border-slate-100">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <span>🥗</span> Dietary Profile &amp; Exclusions
+              </h2>
+              <p className="text-xs text-slate-500">Stored in MySQL `dietary_profiles` (auto-created by trigger)</p>
+            </div>
+
+            <form onSubmit={saveDietary} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Diet Classification
+                </label>
+                <select
+                  value={String(dietary?.diet_type ?? 'other')}
+                  onChange={(e) => setDietary((prev) => ({ ...(prev || {}), diet_type: e.target.value }))}
+                  className="w-full glass-input rounded-2xl px-4 py-2.5 text-sm text-slate-900 border capitalize"
+                >
+                  <option value="vegetarian">Vegetarian</option>
+                  <option value="vegan">Vegan</option>
+                  <option value="non_vegetarian">Non-Vegetarian</option>
+                  <option value="eggetarian">Eggetarian</option>
+                  <option value="pescatarian">Pescatarian</option>
+                  <option value="other">Other / Flexible</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Allergy Notes <span className="text-slate-400 font-normal">(Comma-separated keywords)</span>
+                </label>
+                <textarea
+                  value={String(dietary?.allergy_notes ?? '')}
+                  onChange={(e) => setDietary((prev) => ({ ...(prev || {}), allergy_notes: e.target.value }))}
+                  placeholder="e.g. peanuts, dairy, shellfish, sesame"
+                  rows={3}
+                  className="w-full glass-input rounded-2xl px-4 py-2.5 text-sm text-slate-900 border placeholder:text-slate-400 resize-none"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Recommendation engine converts these into MongoDB <code>allergens: &#123; $nin: [...] &#125;</code> filters.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Intolerance &amp; Dietary Notes
+                </label>
+                <textarea
+                  value={String(dietary?.intolerance_notes ?? '')}
+                  onChange={(e) => setDietary((prev) => ({ ...(prev || {}), intolerance_notes: e.target.value }))}
+                  placeholder="e.g. lactose intolerance, mild gluten sensitivity"
+                  rows={3}
+                  className="w-full glass-input rounded-2xl px-4 py-2.5 text-sm text-slate-900 border placeholder:text-slate-400 resize-none"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30 hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 mt-2"
               >
-                <option value="vegetarian">Vegetarian</option>
-                <option value="vegan">Vegan</option>
-                <option value="non_vegetarian">Non-Vegetarian</option>
-                <option value="eggetarian">Eggetarian</option>
-                <option value="pescatarian">Pescatarian</option>
-                <option value="other">Other / Flexible</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-                Allergy Notes <span className="text-slate-400 font-normal">(Comma-separated keywords)</span>
-              </label>
-              <textarea
-                value={String(dietary.allergy_notes ?? '')}
-                onChange={(e) => setDietary({ ...dietary, allergy_notes: e.target.value })}
-                placeholder="e.g. peanuts, dairy, shellfish, sesame"
-                rows={3}
-                className="w-full glass-input rounded-2xl px-4 py-2.5 text-sm text-slate-900 border placeholder:text-slate-400 resize-none"
-              />
-              <p className="text-[11px] text-slate-400 mt-1">
-                Recommendation engine converts these into MongoDB <code>allergens: &#123; $nin: [...] &#125;</code> filters.
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-                Intolerance &amp; Dietary Notes
-              </label>
-              <textarea
-                value={String(dietary.intolerance_notes ?? '')}
-                onChange={(e) => setDietary({ ...dietary, intolerance_notes: e.target.value })}
-                placeholder="e.g. lactose intolerance, mild gluten sensitivity"
-                rows={3}
-                className="w-full glass-input rounded-2xl px-4 py-2.5 text-sm text-slate-900 border placeholder:text-slate-400 resize-none"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30 hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 mt-2"
-            >
-              {loading ? 'Saving...' : '💾 Update Dietary Profile'}
-            </button>
-          </form>
+                {loading ? 'Saving...' : '💾 Update Dietary Profile'}
+              </button>
+            </form>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

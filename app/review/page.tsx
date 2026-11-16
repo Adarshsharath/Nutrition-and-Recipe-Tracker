@@ -204,9 +204,9 @@ export default function ReviewPage() {
     <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-1">🔬 Review-1 Evaluation Console</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">🔬 DBMS Evaluation Console</h1>
           <p className="text-sm text-gray-500">
-            Interactive verification console for DBMS Review 1 · Live queries, trigger executions, and cross-database validation
+            Interactive verification console for DBMS evaluation · Live queries, trigger executions, and cross-database validation
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

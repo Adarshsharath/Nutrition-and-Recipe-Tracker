@@ -22,10 +22,16 @@ VALUES
    '1995-12-10', 178.00, 80.00, 'very_active')
 ON DUPLICATE KEY UPDATE full_name = VALUES(full_name);
 
--- Dietary profiles (trigger creates them, so update existing ones)
-UPDATE dietary_profiles SET diet_type='non_vegetarian', allergy_notes='peanut',    intolerance_notes='lactose' WHERE user_id='aaaaaaaa-0000-4000-a000-000000000001';
-UPDATE dietary_profiles SET diet_type='vegetarian',     allergy_notes=NULL,        intolerance_notes=NULL      WHERE user_id='bbbbbbbb-0000-4000-b000-000000000002';
-UPDATE dietary_profiles SET diet_type='non_vegetarian', allergy_notes='shellfish', intolerance_notes=NULL      WHERE user_id='cccccccc-0000-4000-c000-000000000003';
+-- Dietary profiles (upsert to ensure rows exist even if trigger didn't fire during bulk seed)
+INSERT INTO dietary_profiles (profile_id, user_id, diet_type, allergy_notes, intolerance_notes)
+VALUES
+  (UUID(), 'aaaaaaaa-0000-4000-a000-000000000001', 'non_vegetarian', 'peanut', 'lactose'),
+  (UUID(), 'bbbbbbbb-0000-4000-b000-000000000002', 'vegetarian', NULL, NULL),
+  (UUID(), 'cccccccc-0000-4000-c000-000000000003', 'non_vegetarian', 'shellfish', NULL)
+ON DUPLICATE KEY UPDATE
+  diet_type = VALUES(diet_type),
+  allergy_notes = VALUES(allergy_notes),
+  intolerance_notes = VALUES(intolerance_notes);
 
 -- Nutrition goals
 INSERT IGNORE INTO nutrition_goals

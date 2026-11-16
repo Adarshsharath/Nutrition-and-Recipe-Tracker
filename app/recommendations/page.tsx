@@ -26,7 +26,7 @@ export default function RecommendationsPage() {
   const [mealType, setMealType] = useState('');
   const [showDebug, setShowDebug] = useState(false);
 
-  async function fetchRecs() {
+  async function refreshRecs() {
     setLoading(true);
     const params = new URLSearchParams();
     if (mealType) params.set('meal_type', mealType);
@@ -35,7 +35,19 @@ export default function RecommendationsPage() {
     setLoading(false);
   }
 
-  useEffect(() => { fetchRecs(); }, []);
+  useEffect(() => {
+    let ignore = false;
+    const params = new URLSearchParams();
+    if (mealType) params.set('meal_type', mealType);
+    fetch(`/api/recommendations?${params}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!ignore) setResults(data);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [mealType]);
 
   const firstCtx = results[0]?.mysqlContext;
 
@@ -83,7 +95,7 @@ export default function RecommendationsPage() {
             ))}
           </select>
           <button
-            onClick={fetchRecs}
+            onClick={refreshRecs}
             className="px-5 py-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30 hover:scale-105 transition-all"
           >
             Refresh Suggestions
@@ -192,7 +204,7 @@ export default function RecommendationsPage() {
                 </p>
               </div>
 
-              <RecipeCard recipe={r.recipe as any} />
+              <RecipeCard recipe={r.recipe as unknown as Parameters<typeof RecipeCard>[0]['recipe']} />
             </div>
           ))}
         </div>
